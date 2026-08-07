@@ -13,7 +13,7 @@ const version = input('version')
 const platform = input('platform')
 const architecture = input('architecture')
 const platformSigned = input('platform-signed') === 'true'
-const includeExtensions = new Set(input('include-extensions').split(',').map((value) => value.trim().toLowerCase()).filter((value) => /^[a-z0-9]{1,12}$/.test(value)))
+const includeExtensions = new Set(input('include-extensions').split(',').map((value) => value.trim().toLowerCase()).filter((value) => /^[a-z0-9]{1,24}$/.test(value)))
 const workspace = resolve(process.env.GITHUB_WORKSPACE ?? process.cwd())
 const artifactDirectory = resolve(workspace, input('artifact-directory'))
 const relation = relative(workspace, artifactDirectory)

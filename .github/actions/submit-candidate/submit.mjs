@@ -7,7 +7,7 @@ const audience = 'https://api.ntanis.dev/project-releases'
 const maximumFiles = 24
 const maximumFileBytes = 536_870_912
 const maximumCandidateBytes = 1_073_741_824
-const input = (name) => process.env[`INPUT_${name.replaceAll('-', '_').toUpperCase()}`]?.trim() ?? ''
+const input = (name) => process.env[`INPUT_${name.replaceAll(' ', '_').toUpperCase()}`]?.trim() ?? ''
 const project = input('project')
 const version = input('version')
 const platform = input('platform')

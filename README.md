@@ -18,7 +18,9 @@ jobs:
     with:
       project: example
       build-matrix: >-
-        [{"os":"ubuntu-latest","script":"build","artifactDirectory":"dist","includeExtensions":"appimage","platform":"linux","architecture":"x64","platformSigned":false}]
+        [{"os":"ubuntu-latest","script":"build","artifactDirectory":"dist","includeExtensions":"appimage","platform":"linux","architecture":"x64","platformSigned":false,"install":true}]
 ```
 
 Pin third-party actions by full commit SHA. Never add credentials, deployment keys, arbitrary shell bridges or project-specific secrets to this repository.
+
+Each matrix entry declares `install` explicitly. Use `true` for locked `npm ci` builds and `false` only for packaging steps that need no repository dependencies.

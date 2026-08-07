@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       build-matrix:
-        description: JSON matrix with os, script, artifactDirectory, platform, architecture and platformSigned
+        description: JSON matrix with os, script, artifactDirectory, platform, architecture, platformSigned and explicit install boolean
         required: true
         type: string
 

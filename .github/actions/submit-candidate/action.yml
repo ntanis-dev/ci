@@ -1,0 +1,21 @@
+name: Submit Ntanis project candidate
+description: Uploads bounded build artifacts to the Ntanis Hub using GitHub Actions OIDC.
+inputs:
+  project:
+    required: true
+  version:
+    required: true
+  artifact-directory:
+    required: true
+  include-extensions:
+    description: Comma-separated extension allowlist without dots
+    required: true
+  platform:
+    required: true
+  architecture:
+    required: true
+  platform-signed:
+    required: true
+runs:
+  using: node24
+  main: submit.mjs

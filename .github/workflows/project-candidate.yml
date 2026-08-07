@@ -1,0 +1,82 @@
+name: Build project candidate
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Hub project identifier
+        required: true
+        type: string
+      build-matrix:
+        description: JSON matrix with os, script, artifactDirectory, platform, architecture and platformSigned
+        required: true
+        type: string
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: package
+        name: Read package version
+        shell: bash
+        run: |
+          node -e "const fs=require('node:fs'); const version=String(JSON.parse(fs.readFileSync('package.json','utf8')).version ?? ''); if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/.test(version)) throw new Error('package.json contains an unsafe version'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + version + '\n')"
+  build:
+    name: ${{ matrix.platform }} · ${{ matrix.architecture }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.build-matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        if: matrix.install != false
+        run: npm ci
+      - name: Build candidate
+        run: npm run ${{ matrix.script }}
+      - name: Transfer candidate to isolated publisher
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ${{ matrix.artifactDirectory }}
+          if-no-files-found: error
+          retention-days: 1
+  submit:
+    name: Submit ${{ matrix.platform }} · ${{ matrix.architecture }}
+    needs: [metadata, build]
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.build-matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download candidate without executing repository code
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: .ntanis-candidate
+      - name: Submit immutable candidate
+        uses: ntanis-dev/ci/.github/actions/submit-candidate@main
+        with:
+          project: ${{ inputs.project }}
+          version: ${{ needs.metadata.outputs.version }}
+          artifact-directory: .ntanis-candidate
+          include-extensions: ${{ matrix.includeExtensions }}
+          platform: ${{ matrix.platform }}
+          architecture: ${{ matrix.architecture }}
+          platform-signed: ${{ matrix.platformSigned }}

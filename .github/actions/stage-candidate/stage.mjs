@@ -6,7 +6,10 @@ const input = (name) => process.env[`INPUT_${name.replaceAll(' ', '_').toUpperCa
 const workspace = resolve(process.env.GITHUB_WORKSPACE ?? process.cwd())
 const sourceDirectory = resolve(workspace, input('source-directory'))
 const outputDirectory = resolve(workspace, input('output-directory'))
-const patterns = input('include-files').split(',').map((item) => item.trim()).filter(Boolean)
+const declaredPatterns = input('include-files').split(',').map((item) => item.trim()).filter(Boolean)
+const extensions = input('include-extensions').split(',').map((item) => item.trim()).filter(Boolean)
+if (extensions.some((item) => !/^[A-Za-z0-9][A-Za-z0-9+_-]{0,31}$/.test(item))) throw new Error('Invalid include-extensions values.')
+const patterns = declaredPatterns.length > 0 ? declaredPatterns : extensions.map((extension) => `*.${extension}`)
 
 function contained(path) {
   const relation = relative(workspace, path)

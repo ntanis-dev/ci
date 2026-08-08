@@ -4,7 +4,11 @@ inputs:
   source-directory:
     required: true
   include-files:
-    required: true
+    description: Comma-separated top-level file patterns. Takes precedence over include-extensions.
+    required: false
+  include-extensions:
+    description: Comma-separated extensions used to derive wildcard patterns when include-files is omitted.
+    required: false
   output-directory:
     required: true
 runs:

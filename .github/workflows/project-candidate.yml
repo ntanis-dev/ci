@@ -1,7 +1,7 @@
 name: Build project candidate
 
 concurrency:
-  group: ntanis-candidate-${{ inputs.project }}
+  group: ntanis-candidate-${{ inputs.project }}-${{ github.ref }}
   cancel-in-progress: true
 
 on:
@@ -41,6 +41,11 @@ jobs:
         shell: bash
         run: |
           node -e "const fs=require('node:fs'); const version=String(JSON.parse(fs.readFileSync('package.json','utf8')).version ?? ''); if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/.test(version)) throw new Error('package.json contains an unsafe version'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + version + '\n')"
+      - name: Validate downloadable component policy
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); if(m.schemaVersion!==1||m.project!==process.env.PROJECT||!Array.isArray(m.components)||!m.components.some(c=>c&&c.type==='downloadable'&&c.publication==='manual')) throw new Error('Missing manual downloadable component policy')"
   build:
     needs: metadata
     name: ${{ matrix.platform }} · ${{ matrix.architecture }}

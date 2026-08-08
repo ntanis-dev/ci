@@ -2,6 +2,8 @@
 
 Public, secret-free reusable workflows for projects owned by ntanis.dev.
 
+Every integrated repository carries a versioned `ntanis.project.json` manifest. `project-validate.yml` checks that manifest, installs the frozen graph, enforces the supply-chain baseline, and runs bounded package scripts on every pushed commit and pull request. Branch and pull-request runs stop after validation; only successful `main` runs proceed to a downloadable candidate or hosted deployment.
+
 `project-candidate.yml` builds an explicitly configured matrix on isolated GitHub-hosted runners. Build jobs have read-only repository access and **no OIDC permission**. A pinned staging action copies only the declared top-level release files before GitHub retains those short-lived transfer artifacts for one day. One publisher job downloads the complete matrix without executing repository code, proves its GitHub OIDC identity, declares an atomic manifest, and uploads checksum-verified 8 MiB chunks to ntanis.dev Hub with at most four requests in flight.
 
 Hub accepts an upload only when the signed identity matches the registered repository, branch, commit, run and an immutable revision of this reusable workflow. No project receives a Hub credential. A candidate becomes reviewable only after every required platform, architecture and format in its manifest is present. Uploaded bytes remain private until an owner publishes them in Hub; unpublishing immediately removes the public pointer without deleting the candidate.
@@ -31,6 +33,14 @@ Each matrix entry still declares `install` for backward-compatible schema valida
 
 ## Isolated web services
 
-`project-service.yml` is the separate contract for ntanis.dev projects that need their own backend. It currently accepts `tempo`, `justdoit`, `lyrical`, and `djtube`. The build job runs the frozen pnpm install, policy and signature checks, vulnerability checks, project verification and the build without any deployment credential. It emits a production CycloneDX SBOM, prunes development packages, and transfers a one-day runtime artifact to a fresh deploy job. That job verifies the checksum and can only connect as the host's constrained `project-ci` account. The host broker then routes the exact project identifier to that project's isolated guest; the guest deployer checks archive paths, switches an immutable release, verifies `/health`, rolls back on failure and retains three releases.
+`project-service.yml` is the separate contract for ntanis.dev projects that need their own backend. It currently accepts `tempo`, `justdoit`, `lyrical`, and `djtube`. The build job runs the frozen pnpm install, policy and signature checks, vulnerability checks, project verification and the build without any deployment credential. It emits a production CycloneDX SBOM, prunes development packages, and transfers a one-day runtime artifact to a fresh deploy job. That job verifies the checksum and can only connect as the host's constrained `project-ci` account. The host broker then routes the exact project identifier to that project's isolated guest; the guest deployer checks archive paths, switches an immutable release, verifies the local and public `/health` paths, rolls back on failure and retains three releases.
+
+The deploy job reports the final outcome, artifact checksum, commit and GitHub run identity to Hub using a short-lived GitHub Actions OIDC token. Hub verifies the exact repository, ref, commit and immutable reusable-workflow revision before recording anything. Healthy reports advance the hosted component's live pointer; failed reports preserve the existing pointer. Hub retains a short deployment history and exposes only the retained previous generation to the owner-only, health-checked rollback control.
+
+The separation is deliberate:
+
+- `downloadable` components always use `publication: "manual"`; a green main build becomes a private candidate and never changes public download/update metadata until an owner publishes it.
+- `hosted` components normally use `deployment: "automatic"`; a green main build is deployed atomically, checked, recorded, and automatically restored if health verification fails.
+- Feature branches and pull requests validate and build but neither upload durable candidates nor deploy services.
 
 The SSH private key is supplied by the private caller repository and is never stored here. The reusable workflow must be pinned by full commit SHA. Adding another service requires an explicit allow-list entry in this workflow and in the host/guest broker; arbitrary project names, commands, runtime paths and destinations are intentionally unsupported.

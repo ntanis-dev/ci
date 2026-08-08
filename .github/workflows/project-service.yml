@@ -54,6 +54,12 @@ jobs:
       - name: Check out project source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      - name: Validate hosted component policy
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); if(m.schemaVersion!==1||m.project!==process.env.PROJECT||!Array.isArray(m.components)||!m.components.some(c=>c&&c.id==='service'&&c.type==='hosted'&&c.deployment==='automatic'&&c.healthPath==='/health')) throw new Error('Missing automatic hosted service policy')"
+
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
@@ -133,6 +139,9 @@ jobs:
     if: inputs.deploy
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Download the runtime without executing it
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -161,7 +170,9 @@ jobs:
           test "$actual" = "$SERVER_FINGERPRINT"
           mv ~/.ssh/known_hosts.scan ~/.ssh/known_hosts
 
-      - name: Deploy with guest-local health verification and rollback
+      - id: deploy
+        name: Deploy with local and public health verification and rollback
+        continue-on-error: true
         env:
           PROJECT: ${{ inputs.project }}
           RELEASE_ID: ${{ github.sha }}
@@ -170,5 +181,51 @@ jobs:
         run: |
           case "$PROJECT" in tempo|justdoit|lyrical|djtube) ;; *) exit 2 ;; esac
           test "${#RELEASE_ID}" -eq 40
-          ssh "$SERVER_USER@$SERVER_HOST" "upload $PROJECT $RELEASE_ID" < project-runtime.tar.gz
-          ssh "$SERVER_USER@$SERVER_HOST" "deploy $PROJECT $RELEASE_ID"
+          started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          artifact_sha256="$(sha256sum project-runtime.tar.gz | awk '{print $1}')"
+          status=healthy
+          failure_code=''
+          if ! ssh "$SERVER_USER@$SERVER_HOST" "upload $PROJECT $RELEASE_ID" < project-runtime.tar.gz; then
+            status=failed
+            failure_code=upload_failed
+          elif ! ssh "$SERVER_USER@$SERVER_HOST" "deploy $PROJECT $RELEASE_ID"; then
+            status=failed
+            failure_code=health_or_deploy_failed
+          fi
+          {
+            echo "artifact-sha256=$artifact_sha256"
+            echo "failure-code=$failure_code"
+            echo "started-at=$started_at"
+            echo "status=$status"
+          } >> "$GITHUB_OUTPUT"
+          test "$status" = healthy
+
+      - name: Report the immutable deployment outcome to Hub
+        if: always() && steps.deploy.outputs.status != ''
+        env:
+          ARTIFACT_SHA256: ${{ steps.deploy.outputs.artifact-sha256 }}
+          FAILURE_CODE: ${{ steps.deploy.outputs.failure-code }}
+          HUB_AUDIENCE: https://api.ntanis.dev/project-deployments
+          PROJECT: ${{ inputs.project }}
+          STARTED_AT: ${{ steps.deploy.outputs.started-at }}
+          STATUS: ${{ steps.deploy.outputs.status }}
+        run: |
+          oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
+          oidc_token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$oidc_url" | jq -er .value)"
+          payload="$(jq -cn \
+            --arg artifactSha256 "$ARTIFACT_SHA256" \
+            --arg commit "$GITHUB_SHA" \
+            --arg failureCode "$FAILURE_CODE" \
+            --arg finishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg startedAt "$STARTED_AT" \
+            --arg status "$STATUS" \
+            '{artifactSha256:$artifactSha256,commit:$commit,finishedAt:$finishedAt,startedAt:$startedAt,status:$status} + (if $failureCode == "" then {} else {failureCode:$failureCode} end)')"
+          curl --fail --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $oidc_token" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            "https://api.ntanis.dev/v1/deployments/$PROJECT/service"
+
+      - name: Preserve failed deployment status
+        if: always() && steps.deploy.outputs.status == 'failed'
+        run: exit 1

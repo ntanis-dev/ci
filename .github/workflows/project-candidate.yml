@@ -54,12 +54,12 @@ jobs:
         with:
           source-directory: ${{ matrix.artifactDirectory }}
           include-files: ${{ matrix.includeFiles }}
-          output-directory: .ntanis-stage
+          output-directory: ntanis-stage
       - name: Transfer candidate to isolated publisher
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
-          path: .ntanis-stage
+          path: ntanis-stage
           if-no-files-found: error
           retention-days: 1
   submit:

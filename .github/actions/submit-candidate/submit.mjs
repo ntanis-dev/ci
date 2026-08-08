@@ -51,7 +51,7 @@ async function files(directory, formats) {
 const artifacts = []
 for (const item of targets) {
   const formats = new Set(item.formats)
-  const directory = resolve(artifactDirectory, `candidate-${item.platform}-${item.architecture}`)
+  const directory = targets.length === 1 ? artifactDirectory : resolve(artifactDirectory, `candidate-${item.platform}-${item.architecture}`)
   const relation = relative(artifactDirectory, directory)
   if (relation.startsWith('..') || resolve(artifactDirectory, relation) !== directory) throw new Error('Unsafe candidate target path.')
   const found = await files(directory, formats)

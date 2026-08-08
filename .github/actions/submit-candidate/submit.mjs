@@ -5,6 +5,7 @@ import { basename, extname, relative, resolve } from 'node:path'
 const api = 'https://api.ntanis.dev/v1/releases/candidates'
 const audience = 'https://api.ntanis.dev/project-releases'
 const chunkBytes = 8 * 1024 * 1024
+const chunkConcurrency = 4
 const maximumFiles = 24
 const maximumFileBytes = 1024 * 1024 * 1024
 const maximumCandidateBytes = 4 * 1024 * 1024 * 1024
@@ -103,7 +104,7 @@ async function hub(path, options = {}) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       const token = await oidcToken(attempt > 0 && last?.status === 401)
-      const response = await fetch(`${api}/${encodeURIComponent(project)}${path}`, { ...options, headers: { ...options.headers, authorization: `Bearer ${token}` } })
+      const response = await fetch(`${api}/${encodeURIComponent(project)}${path}`, { ...options, signal: options.signal ?? AbortSignal.timeout(90_000), headers: { ...options.headers, authorization: `Bearer ${token}` } })
       if (response.ok) return response
       const detail = await response.text()
       last = { status: response.status, detail }
@@ -132,14 +133,19 @@ for (const local of artifacts) {
   if (remote.uploaded) continue
   const handle = await open(local.path, 'r')
   try {
-    for (let index = 0, position = 0; position < local.sizeBytes; index += 1, position += chunkBytes) {
-      const buffer = Buffer.allocUnsafe(Math.min(chunkBytes, local.sizeBytes - position))
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position)
-      const body = buffer.subarray(0, bytesRead)
-      const chunkSha256 = createHash('sha256').update(body).digest('hex')
-      await hub(`/${candidate.candidateId}/artifacts/${remote.id}/chunks/${index}`, {
-        method: 'PUT', body, headers: { 'content-type': 'application/octet-stream', 'x-ntanis-commit': commit, 'x-ntanis-chunk-size': String(bytesRead), 'x-ntanis-chunk-sha256': chunkSha256 }
-      })
+    for (let first = 0; first < local.chunkCount; first += chunkConcurrency) {
+      const requests = []
+      for (let index = first; index < Math.min(first + chunkConcurrency, local.chunkCount); index += 1) {
+        const position = index * chunkBytes
+        const body = Buffer.allocUnsafe(Math.min(chunkBytes, local.sizeBytes - position))
+        const { bytesRead } = await handle.read(body, 0, body.length, position)
+        if (bytesRead !== body.length) throw new Error(`Could not read complete chunk ${index} for ${local.fileName}.`)
+        const chunkSha256 = createHash('sha256').update(body).digest('hex')
+        requests.push(hub(`/${candidate.candidateId}/artifacts/${remote.id}/chunks/${index}`, {
+          method: 'PUT', body, headers: { 'content-type': 'application/octet-stream', 'x-ntanis-commit': commit, 'x-ntanis-chunk-size': String(bytesRead), 'x-ntanis-chunk-sha256': chunkSha256 }
+        }))
+      }
+      await Promise.all(requests)
     }
   } finally { await handle.close() }
   await hub(`/${candidate.candidateId}/artifacts/${remote.id}/complete`, { method: 'POST', body: JSON.stringify({ commit, chunkCount: local.chunkCount }), headers: { 'content-type': 'application/json' } })

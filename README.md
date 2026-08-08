@@ -2,7 +2,7 @@
 
 Public, secret-free reusable workflows for projects owned by Ntanis.
 
-`project-candidate.yml` builds an explicitly configured matrix on isolated GitHub-hosted runners. Build jobs have read-only repository access and **no OIDC permission**. GitHub retains their short-lived transfer artifacts for one day. One publisher job downloads the entire matrix without executing repository code, proves its GitHub OIDC identity, declares an atomic manifest, and uploads checksum-verified 8 MiB chunks to ntanis.dev Hub.
+`project-candidate.yml` builds an explicitly configured matrix on isolated GitHub-hosted runners. Build jobs have read-only repository access and **no OIDC permission**. GitHub retains their short-lived transfer artifacts for one day. One publisher job downloads the entire matrix without executing repository code, proves its GitHub OIDC identity, declares an atomic manifest, and uploads checksum-verified 8 MiB chunks to ntanis.dev Hub with at most four requests in flight.
 
 Hub accepts an upload only when the signed identity matches the registered repository, branch, commit, run and an immutable revision of this reusable workflow. No project receives a Hub credential. A candidate becomes reviewable only after every required platform, architecture and format in its manifest is present. Uploaded bytes remain private until an owner publishes them in Hub; unpublishing immediately removes the public pointer without deleting the candidate.
 

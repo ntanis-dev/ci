@@ -26,3 +26,9 @@ Pin this workflow and every third-party action by full commit SHA. Never add cre
 Each matrix entry declares `install` explicitly. Use `true` for locked `npm ci` builds and `false` only for packaging steps that need no repository dependencies.
 
 `includeExtensions` is a required-format specification, not merely a filter. For example, `"exe,blockmap,yml"` means all three formats must exist for that target or the complete submission fails. `includeFiles` is a comma-separated set of safe top-level filename patterns; directories and files outside those explicit patterns are never submitted. A newer run replaces an unfinished older upload; Hub keeps only the current publication, its rollback predecessor and at most one active candidate, while unreferenced chunks and blobs are reclaimed automatically.
+
+## Isolated web services
+
+`project-service.yml` is the separate contract for ntanis.dev projects that need their own backend. It currently accepts only `tempo` and `justdoit`. The build job runs locked installs, vulnerability checks, project verification and the build without any deployment credential. It transfers a one-day runtime artifact to a fresh deploy job, which verifies the checksum and can only connect as the host's constrained `project-ci` account. The host broker then routes the exact project identifier to that project's isolated guest; the guest deployer checks archive paths, switches an immutable release, verifies `/health`, rolls back on failure and retains three releases.
+
+The SSH private key is supplied by the private caller repository and is never stored here. The reusable workflow must be pinned by full commit SHA. Adding another service requires an explicit allow-list entry in this workflow and in the host/guest broker; arbitrary project names, commands, runtime paths and destinations are intentionally unsupported.

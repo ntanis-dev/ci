@@ -1,0 +1,153 @@
+name: Build and deploy project service
+
+concurrency:
+  group: ntanis-service-${{ inputs.project }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Supported ntanis.dev service identifier
+        required: true
+        type: string
+      deploy:
+        description: Deploy the verified build to its isolated project guest
+        required: false
+        default: false
+        type: boolean
+      server-host:
+        description: SSH ingress host
+        required: false
+        default: 5.9.21.198
+        type: string
+      server-user:
+        description: Constrained project deployment account
+        required: false
+        default: project-ci
+        type: string
+      server-fingerprint:
+        description: Expected SHA256 ED25519 host-key fingerprint
+        required: true
+        type: string
+    secrets:
+      server-ssh-key:
+        description: Private key accepted only by the constrained project deployment account
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate service contract
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          case "$PROJECT" in
+            tempo|justdoit) ;;
+            *) echo 'Unsupported project service.' >&2; exit 2 ;;
+          esac
+
+      - name: Check out project source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install the locked dependency graph
+        run: npm ci --ignore-scripts
+
+      - name: Reject known high-severity production vulnerabilities
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Verify and build
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          case "$PROJECT" in
+            tempo) npm run check ;;
+            justdoit) npm run typecheck ;;
+            *) exit 2 ;;
+          esac
+          npm run build
+
+      - name: Assemble the bounded runtime
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          npm sbom --omit=dev --sbom-format=cyclonedx > ntanis-project.sbom.cdx.json
+          npm prune --omit=dev --ignore-scripts
+          case "$PROJECT" in
+            tempo)
+              test -f dist/server/index.js
+              test -f dist/client/index.html
+              tar -czf project-runtime.tar.gz dist package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              ;;
+            justdoit)
+              test -f server-dist/index.js
+              test -f dist/index.html
+              tar -czf project-runtime.tar.gz dist server-dist package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              ;;
+            *) exit 2 ;;
+          esac
+          sha256sum project-runtime.tar.gz > project-runtime.tar.gz.sha256
+
+      - name: Transfer the runtime without deployment credentials
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: project-runtime
+          path: |
+            project-runtime.tar.gz
+            project-runtime.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    if: inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the runtime without executing it
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: project-runtime
+
+      - name: Verify transferred bytes
+        run: sha256sum --check project-runtime.tar.gz.sha256
+
+      - name: Configure pinned SSH transport
+        env:
+          SERVER_FINGERPRINT: ${{ inputs.server-fingerprint }}
+          SERVER_HOST: ${{ inputs.server-host }}
+          SERVER_SSH_KEY: ${{ secrets.server-ssh-key }}
+          SERVER_USER: ${{ inputs.server-user }}
+        run: |
+          test -n "$SERVER_HOST"
+          test "$SERVER_USER" = project-ci
+          test -n "$SERVER_FINGERPRINT"
+          test -n "$SERVER_SSH_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$SERVER_HOST" > ~/.ssh/known_hosts.scan
+          actual="$(ssh-keygen -lf ~/.ssh/known_hosts.scan -E sha256 | awk '{print $2}')"
+          test "$actual" = "$SERVER_FINGERPRINT"
+          mv ~/.ssh/known_hosts.scan ~/.ssh/known_hosts
+
+      - name: Deploy with guest-local health verification and rollback
+        env:
+          PROJECT: ${{ inputs.project }}
+          RELEASE_ID: ${{ github.sha }}
+          SERVER_HOST: ${{ inputs.server-host }}
+          SERVER_USER: ${{ inputs.server-user }}
+        run: |
+          case "$PROJECT" in tempo|justdoit) ;; *) exit 2 ;; esac
+          test "${#RELEASE_ID}" -eq 40
+          ssh "$SERVER_USER@$SERVER_HOST" "upload $PROJECT $RELEASE_ID" < project-runtime.tar.gz
+          ssh "$SERVER_USER@$SERVER_HOST" "deploy $PROJECT $RELEASE_ID"

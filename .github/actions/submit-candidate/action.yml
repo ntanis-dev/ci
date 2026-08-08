@@ -7,14 +7,8 @@ inputs:
     required: true
   artifact-directory:
     required: true
-  include-extensions:
-    description: Comma-separated extension allowlist without dots
-    required: true
-  platform:
-    required: true
-  architecture:
-    required: true
-  platform-signed:
+  build-matrix:
+    description: The exact build matrix whose required formats must all be present.
     required: true
 runs:
   using: node24

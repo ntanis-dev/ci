@@ -1,5 +1,9 @@
 name: Build project candidate
 
+concurrency:
+  group: ntanis-candidate-${{ inputs.project }}
+  cancel-in-progress: true
+
 on:
   workflow_call:
     inputs:
@@ -53,29 +57,23 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   submit:
-    name: Submit ${{ matrix.platform }} · ${{ matrix.architecture }}
+    name: Submit atomic candidate
     needs: [metadata, build]
     permissions:
       contents: read
       id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(inputs.build-matrix) }}
     runs-on: ubuntu-latest
     steps:
-      - name: Download candidate without executing repository code
+      - name: Download candidates without executing repository code
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
-          path: .ntanis-candidate
-      - name: Submit immutable candidate
+          pattern: candidate-*
+          path: .ntanis-candidates
+          merge-multiple: false
+      - name: Submit complete immutable candidate
         uses: ntanis-dev/ci/.github/actions/submit-candidate@main
         with:
           project: ${{ inputs.project }}
           version: ${{ needs.metadata.outputs.version }}
-          artifact-directory: .ntanis-candidate
-          include-extensions: ${{ matrix.includeExtensions }}
-          platform: ${{ matrix.platform }}
-          architecture: ${{ matrix.architecture }}
-          platform-signed: ${{ matrix.platformSigned }}
+          artifact-directory: .ntanis-candidates
+          build-matrix: ${{ inputs.build-matrix }}

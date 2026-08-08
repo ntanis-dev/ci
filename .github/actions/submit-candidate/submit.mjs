@@ -6,8 +6,8 @@ const api = 'https://api.ntanis.dev/v1/releases/candidates'
 const audience = 'https://api.ntanis.dev/project-releases'
 const chunkBytes = 8 * 1024 * 1024
 const maximumFiles = 24
-const maximumFileBytes = 512 * 1024 * 1024
-const maximumCandidateBytes = 1024 * 1024 * 1024
+const maximumFileBytes = 1024 * 1024 * 1024
+const maximumCandidateBytes = 4 * 1024 * 1024 * 1024
 const input = (name) => process.env[`INPUT_${name.replaceAll(' ', '_').toUpperCase()}`]?.trim() ?? ''
 const project = input('project')
 const version = input('version')

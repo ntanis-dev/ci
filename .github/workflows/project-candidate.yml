@@ -49,11 +49,17 @@ jobs:
         run: npm ci
       - name: Build candidate
         run: npm run ${{ matrix.script }}
+      - name: Stage explicit release files
+        uses: ntanis-dev/ci/.github/actions/stage-candidate@daad75654b0dce7ae0965eac235d812440449e30
+        with:
+          source-directory: ${{ matrix.artifactDirectory }}
+          include-files: ${{ matrix.includeFiles }}
+          output-directory: .ntanis-stage
       - name: Transfer candidate to isolated publisher
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
-          path: ${{ matrix.artifactDirectory }}
+          path: .ntanis-stage
           if-no-files-found: error
           retention-days: 1
   submit:

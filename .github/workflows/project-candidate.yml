@@ -59,7 +59,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - name: Install locked dependencies
-        if: matrix.install != false
         run: pnpm install --frozen-lockfile
       - name: Build candidate
         run: pnpm run ${{ matrix.script }}

@@ -54,57 +54,66 @@ jobs:
       - name: Check out project source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Install the locked dependency graph
-        run: npm ci --ignore-scripts
+        run: pnpm install --frozen-lockfile
+
+      - name: Enforce the repository supply-chain policy
+        run: pnpm run security:check
+
+      - name: Verify registry signatures
+        run: pnpm run security:signatures
 
       - name: Reject known high-severity production vulnerabilities
-        run: npm audit --audit-level=high --omit=dev
+        run: pnpm run security:vulnerabilities
 
       - name: Verify and build
         env:
           PROJECT: ${{ inputs.project }}
         run: |
           case "$PROJECT" in
-            tempo) npm run check ;;
-            justdoit) npm run typecheck ;;
-            lyrical) npm run check ;;
-            djtube) npm run lint ;;
+            tempo) pnpm run check ;;
+            justdoit) pnpm run typecheck ;;
+            lyrical) pnpm run check ;;
+            djtube) pnpm run lint ;;
             *) exit 2 ;;
           esac
-          if [ "$PROJECT" != lyrical ]; then npm run build; fi
+          if [ "$PROJECT" != lyrical ]; then pnpm run build; fi
 
       - name: Assemble the bounded runtime
         env:
           PROJECT: ${{ inputs.project }}
         run: |
-          npm sbom --omit=dev --sbom-format=cyclonedx > ntanis-project.sbom.cdx.json
-          npm prune --omit=dev --ignore-scripts
+          pnpm sbom --prod --lockfile-only --sbom-format cyclonedx --sbom-spec-version 1.6 --sbom-type application --out ntanis-project.sbom.cdx.json
+          pnpm prune --prod
           case "$PROJECT" in
             tempo)
               test -f dist/server/index.js
               test -f dist/client/index.html
-              tar -czf project-runtime.tar.gz dist package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              tar -czf project-runtime.tar.gz dist package.json pnpm-lock.yaml pnpm-workspace.yaml node_modules ntanis-project.sbom.cdx.json
               ;;
             justdoit)
               test -f server-dist/index.js
               test -f dist/index.html
-              tar -czf project-runtime.tar.gz dist server-dist package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              tar -czf project-runtime.tar.gz dist server-dist package.json pnpm-lock.yaml pnpm-workspace.yaml node_modules ntanis-project.sbom.cdx.json
               ;;
             lyrical)
               test -f server.js
               test -f public/index.html
-              tar -czf project-runtime.tar.gz server.js lib public package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              tar -czf project-runtime.tar.gz server.js lib public package.json pnpm-lock.yaml pnpm-workspace.yaml node_modules ntanis-project.sbom.cdx.json
               ;;
             djtube)
               test -f server-dist/index.js
               test -f dist/index.html
-              tar -czf project-runtime.tar.gz dist server-dist locales package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              tar -czf project-runtime.tar.gz dist server-dist locales package.json pnpm-lock.yaml pnpm-workspace.yaml node_modules ntanis-project.sbom.cdx.json
               ;;
             *) exit 2 ;;
           esac

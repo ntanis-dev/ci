@@ -71,7 +71,7 @@ jobs:
           path: .ntanis-candidates
           merge-multiple: false
       - name: Submit complete immutable candidate
-        uses: ntanis-dev/ci/.github/actions/submit-candidate@main
+        uses: ntanis-dev/ci/.github/actions/submit-candidate@029ea7323bea1d1bad1b1fb5b2adb91f42f860a0
         with:
           project: ${{ inputs.project }}
           version: ${{ needs.metadata.outputs.version }}

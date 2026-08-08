@@ -37,6 +37,8 @@ Each matrix entry still declares `install` for backward-compatible schema valida
 
 The deploy job reports the final outcome, artifact checksum, commit and GitHub run identity to Hub using a short-lived GitHub Actions OIDC token. Hub verifies the exact repository, ref, commit and immutable reusable-workflow revision before recording anything. Healthy reports advance the hosted component's live pointer; failed reports preserve the existing pointer. Hub retains a short deployment history and exposes only the retained previous generation to the owner-only, health-checked rollback control.
 
+Hosted services with a bespoke deployment boundary use `report-hosted-deployment.yml` after their own health-checked deploy job. It grants no deployment capability; it only converts the caller's GitHub identity and bounded outcome fields into the same verified Hub record.
+
 The separation is deliberate:
 
 - `downloadable` components always use `publication: "manual"`; a green main build becomes a private candidate and never changes public download/update metadata until an owner publishes it.

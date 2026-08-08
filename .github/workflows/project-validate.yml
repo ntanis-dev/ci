@@ -48,7 +48,7 @@ jobs:
             if (!component || typeof component !== 'object' || !/^[a-z][a-z0-9-]{0,31}$/.test(component.id) || ids.has(component.id)) throw new Error('Invalid component identifier')
             ids.add(component.id)
             if (component.type === 'hosted') {
-              if (!['automatic', 'manual'].includes(component.deployment) || typeof component.migrations !== 'boolean' || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(component.healthPath)) throw new Error('Invalid hosted component')
+              if (!['automatic', 'manual'].includes(component.deployment) || typeof component.migrations !== 'boolean' || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(component.healthPath) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(component.repository) || !/^refs\/heads\/[A-Za-z0-9._/-]{1,180}$/.test(component.ref)) throw new Error('Invalid hosted component')
             } else if (component.type === 'downloadable') {
               if (component.publication !== 'manual') throw new Error('Downloadable publication must be manual')
             } else throw new Error('Unsupported component type')
@@ -69,4 +69,3 @@ jobs:
           [[ -z "$BUILD_SCRIPT" || "$BUILD_SCRIPT" =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || exit 2
           if [ -n "$CHECK_SCRIPT" ]; then pnpm run "$CHECK_SCRIPT"; fi
           if [ -n "$BUILD_SCRIPT" ]; then pnpm run "$BUILD_SCRIPT"; fi
-

@@ -18,11 +18,11 @@ jobs:
     with:
       project: example
       build-matrix: >-
-        [{"os":"ubuntu-latest","script":"build","artifactDirectory":"dist","includeExtensions":"appimage","platform":"linux","architecture":"x64","platformSigned":false,"install":true}]
+        [{"os":"ubuntu-latest","script":"build","artifactDirectory":"dist","includeExtensions":"appimage","includeFiles":"example-*.AppImage","platform":"linux","architecture":"x64","platformSigned":false,"install":true}]
 ```
 
 Pin this workflow and every third-party action by full commit SHA. Never add credentials, deployment keys, arbitrary shell bridges or project-specific secrets to this repository. Release files are served by ntanis.dev after publication; this workflow never creates GitHub Releases.
 
 Each matrix entry declares `install` explicitly. Use `true` for locked `npm ci` builds and `false` only for packaging steps that need no repository dependencies.
 
-`includeExtensions` is a required-format specification, not merely a filter. For example, `"exe,blockmap,yml"` means all three formats must exist for that target or the complete submission fails. A newer run replaces an unfinished older upload; Hub keeps only the current publication, its rollback predecessor and at most one active candidate, while unreferenced chunks and blobs are reclaimed automatically.
+`includeExtensions` is a required-format specification, not merely a filter. For example, `"exe,blockmap,yml"` means all three formats must exist for that target or the complete submission fails. `includeFiles` is a comma-separated set of safe top-level filename patterns; directories and files outside those explicit patterns are never submitted. A newer run replaces an unfinished older upload; Hub keeps only the current publication, its rollback predecessor and at most one active candidate, while unreferenced chunks and blobs are reclaimed automatically.

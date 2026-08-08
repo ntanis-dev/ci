@@ -30,21 +30,27 @@ function target(value) {
   const architecture = String(value.architecture ?? '').toLowerCase()
   const platformSigned = value.platformSigned === true
   const formats = String(value.includeExtensions ?? '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean)
+  const includeFiles = String(value.includeFiles ?? '').split(',').map((item) => item.trim()).filter(Boolean)
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(platform) || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(architecture) || formats.length < 1 || formats.length > 8 || formats.some((item) => !/^[a-z0-9][a-z0-9._+-]{0,31}$/.test(item)) || new Set(formats).size !== formats.length) throw new Error('Invalid build matrix target.')
-  return { architecture, formats, platform, platformSigned }
+  if (includeFiles.length < 1 || includeFiles.length > 16 || includeFiles.some((item) => !/^[A-Za-z0-9*][A-Za-z0-9._+*-]{0,159}$/.test(item))) throw new Error('Each build target must declare 1-16 safe includeFiles patterns.')
+  return { architecture, formats, includeFiles, platform, platformSigned }
 }
 
 const targets = matrix.map(target)
 if (new Set(targets.map((item) => `${item.platform}:${item.architecture}`)).size !== targets.length) throw new Error('Build matrix target keys must be unique.')
 
-async function files(directory, formats) {
+function matches(pattern, name) {
+  const source = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')
+  return new RegExp(`^${source}$`, 'i').test(name)
+}
+
+async function files(directory, formats, patterns) {
   const result = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name)
     const info = await lstat(path)
     if (info.isSymbolicLink()) throw new Error(`Symlinks are not accepted: ${relative(workspace, path)}`)
-    if (info.isDirectory()) result.push(...await files(path, formats))
-    else if (info.isFile() && formats.has(extname(entry.name).slice(1).toLowerCase())) result.push({ path, size: info.size })
+    if (info.isFile() && formats.has(extname(entry.name).slice(1).toLowerCase()) && patterns.some((pattern) => matches(pattern, entry.name))) result.push({ path, size: info.size })
   }
   return result
 }
@@ -55,7 +61,7 @@ for (const item of targets) {
   const directory = targets.length === 1 ? artifactDirectory : resolve(artifactDirectory, `candidate-${item.platform}-${item.architecture}`)
   const relation = relative(artifactDirectory, directory)
   if (relation.startsWith('..') || resolve(artifactDirectory, relation) !== directory) throw new Error('Unsafe candidate target path.')
-  const found = await files(directory, formats)
+  const found = await files(directory, formats, item.includeFiles)
   for (const format of formats) if (!found.some((file) => extname(file.path).slice(1).toLowerCase() === format)) throw new Error(`Missing required ${item.platform}/${item.architecture} .${format} artifact.`)
   for (const file of found) {
     const fileName = basename(file.path)

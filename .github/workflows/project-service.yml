@@ -47,7 +47,7 @@ jobs:
           PROJECT: ${{ inputs.project }}
         run: |
           case "$PROJECT" in
-            tempo|justdoit) ;;
+            tempo|justdoit|lyrical|djtube) ;;
             *) echo 'Unsupported project service.' >&2; exit 2 ;;
           esac
 
@@ -73,9 +73,11 @@ jobs:
           case "$PROJECT" in
             tempo) npm run check ;;
             justdoit) npm run typecheck ;;
+            lyrical) npm run check ;;
+            djtube) npm run lint ;;
             *) exit 2 ;;
           esac
-          npm run build
+          if [ "$PROJECT" != lyrical ]; then npm run build; fi
 
       - name: Assemble the bounded runtime
         env:
@@ -93,6 +95,16 @@ jobs:
               test -f server-dist/index.js
               test -f dist/index.html
               tar -czf project-runtime.tar.gz dist server-dist package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              ;;
+            lyrical)
+              test -f server.js
+              test -f public/index.html
+              tar -czf project-runtime.tar.gz server.js lib public package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
+              ;;
+            djtube)
+              test -f server-dist/index.js
+              test -f dist/index.html
+              tar -czf project-runtime.tar.gz dist server-dist locales package.json package-lock.json node_modules ntanis-project.sbom.cdx.json
               ;;
             *) exit 2 ;;
           esac
@@ -147,7 +159,7 @@ jobs:
           SERVER_HOST: ${{ inputs.server-host }}
           SERVER_USER: ${{ inputs.server-user }}
         run: |
-          case "$PROJECT" in tempo|justdoit) ;; *) exit 2 ;; esac
+          case "$PROJECT" in tempo|justdoit|lyrical|djtube) ;; *) exit 2 ;; esac
           test "${#RELEASE_ID}" -eq 40
           ssh "$SERVER_USER@$SERVER_HOST" "upload $PROJECT $RELEASE_ID" < project-runtime.tar.gz
           ssh "$SERVER_USER@$SERVER_HOST" "deploy $PROJECT $RELEASE_ID"

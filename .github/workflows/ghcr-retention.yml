@@ -1,0 +1,42 @@
+name: Retain safe GHCR history
+
+on:
+  workflow_call:
+    inputs:
+      delete:
+        description: Delete eligible versions; false performs a dry run
+        required: false
+        default: false
+        type: boolean
+      keep-latest:
+        description: Minimum newest package versions retained
+        required: false
+        default: 10
+        type: number
+      minimum-age-days:
+        description: Minimum age before a package version may be deleted
+        required: false
+        default: 7
+        type: number
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  retention:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Preserve deployed digests and prune bounded history
+        uses: ntanis-dev/ci/.github/actions/ghcr-retention@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          delete: ${{ inputs.delete }}
+          keep-latest: ${{ inputs.keep-latest }}
+          minimum-age-days: ${{ inputs.minimum-age-days }}

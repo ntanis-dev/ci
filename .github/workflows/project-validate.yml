@@ -1,0 +1,115 @@
+name: Validate project commit
+
+concurrency:
+  group: ntanis-validate-${{ inputs.project }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Hub project identifier
+        required: true
+        type: string
+      check-script:
+        description: Optional package script used for static verification
+        required: false
+        default: ''
+        type: string
+      build-script:
+        description: Optional package script used for the ordinary non-packaging build
+        required: false
+        default: build
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Validate ntanis.dev component manifest
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          if (manifest.schemaVersion !== 1 || manifest.project !== process.env.PROJECT || !Array.isArray(manifest.components) || manifest.components.length < 1 || manifest.components.length > 8) throw new Error('Invalid ntanis.dev project manifest')
+          const ids = new Set()
+          for (const component of manifest.components) {
+            if (!component || typeof component !== 'object' || !/^[a-z][a-z0-9-]{0,31}$/.test(component.id) || ids.has(component.id)) throw new Error('Invalid component identifier')
+            ids.add(component.id)
+            if (component.type === 'hosted') {
+              if (!['automatic', 'manual'].includes(component.deployment) || typeof component.migrations !== 'boolean' || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(component.healthPath) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(component.repository) || !/^refs\/heads\/[A-Za-z0-9._/-]{1,180}$/.test(component.ref)) throw new Error('Invalid hosted component')
+            } else if (component.type === 'downloadable') {
+              if (component.publication !== 'manual') throw new Error('Downloadable publication must be manual')
+            } else throw new Error('Unsupported component type')
+          }
+          NODE
+      - name: Validate optional PWA application contract
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const applications = manifest.applications ?? []
+          if (!Array.isArray(applications) || applications.length > 4) throw new Error('Invalid application declarations')
+          const componentIds = new Set((manifest.components ?? []).filter((item) => item?.type === 'hosted').map((item) => item.id))
+          const applicationIds = new Set()
+          const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'origin', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
+          const sourcePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/
+          const basePath = /^\/(?:[A-Za-z0-9._~-]+\/)*$/
+          const identifier = /^[a-z][a-z0-9-]{0,31}$/
+          const repositoryRoot = fs.realpathSync(process.cwd())
+          const readBounded = (file, maximum) => {
+            if (!sourcePath.test(file)) throw new Error(`Invalid PWA source path: ${file}`)
+            const resolved = path.resolve(file)
+            const metadata = fs.lstatSync(resolved)
+            const real = fs.realpathSync(resolved)
+            if (!metadata.isFile() || !real.startsWith(`${repositoryRoot}${path.sep}`) || metadata.size < 1 || metadata.size > maximum) throw new Error(`Invalid PWA source file: ${file}`)
+            return fs.readFileSync(real)
+          }
+          for (const application of applications) {
+            if (!application || typeof application !== 'object' || Object.keys(application).some((key) => !allowed.has(key))) throw new Error('Invalid PWA application fields')
+            if (!identifier.test(application.id) || applicationIds.has(application.id)) throw new Error('Invalid PWA application identifier')
+            applicationIds.add(application.id)
+            if (application.type !== 'pwa' || application.contractVersion !== 1 || !componentIds.has(application.component)) throw new Error('Invalid PWA component binding')
+            let origin
+            try { origin = new URL(application.origin) } catch { throw new Error('Invalid PWA origin') }
+            if (origin.protocol !== 'https:' || origin.origin !== application.origin || origin.username || origin.password) throw new Error('Invalid PWA origin')
+            if (typeof application.basePath !== 'string' || !basePath.test(application.basePath) || application.basePath.length > 240) throw new Error('Invalid PWA base path')
+            if (!['none', 'shell', 'local-data'].includes(application.offline) || application.update !== 'prompt' || !['none', 'optional', 'required'].includes(application.identity) || !['none', 'hub-settings', 'hub-settings-realtime'].includes(application.accountState) || !['none', 'anonymous-local-controls'].includes(application.telemetry)) throw new Error('Invalid PWA capability declaration')
+            if (application.identity === 'none' && application.accountState !== 'none') throw new Error('PWA account state requires identity')
+            const webManifest = JSON.parse(readBounded(application.manifestPath, 64 * 1024).toString('utf8'))
+            if (typeof webManifest.name !== 'string' || !webManifest.name.trim() || typeof webManifest.short_name !== 'string' || !webManifest.short_name.trim() || webManifest.id !== application.basePath || webManifest.scope !== application.basePath || typeof webManifest.start_url !== 'string' || !webManifest.start_url.startsWith(application.basePath) || !['standalone', 'minimal-ui'].includes(webManifest.display) || !/^#[0-9a-f]{6}$/i.test(webManifest.background_color) || !/^#[0-9a-f]{6}$/i.test(webManifest.theme_color)) throw new Error('Invalid installable web manifest')
+            const icons = Array.isArray(webManifest.icons) ? webManifest.icons : []
+            for (const size of ['192x192', '512x512']) {
+              if (!icons.some((icon) => icon?.sizes === size && icon?.type === 'image/png' && typeof icon.src === 'string' && icon.src.startsWith(application.basePath) && typeof icon.purpose === 'string' && icon.purpose.split(/\s+/).includes('maskable'))) throw new Error(`PWA manifest is missing a maskable ${size} PNG icon`)
+            }
+            const worker = readBounded(application.serviceWorkerPath, 128 * 1024).toString('utf8')
+            if (!worker.includes(application.basePath)) throw new Error('PWA service worker is not visibly scoped to its declared base path')
+          }
+          NODE
+      - name: Install and verify the locked dependency graph
+        run: |
+          pnpm install --frozen-lockfile
+          npm audit signatures
+          pnpm audit --audit-level high
+      - name: Verify and build the commit
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+        run: |
+          [[ -z "$CHECK_SCRIPT" || "$CHECK_SCRIPT" =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || exit 2
+          [[ -z "$BUILD_SCRIPT" || "$BUILD_SCRIPT" =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || exit 2
+          if [ -n "$CHECK_SCRIPT" ]; then pnpm run "$CHECK_SCRIPT"; fi
+          if [ -n "$BUILD_SCRIPT" ]; then pnpm run "$BUILD_SCRIPT"; fi

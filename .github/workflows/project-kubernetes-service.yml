@@ -1,0 +1,178 @@
+name: Build and deploy Kubernetes project service
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        required: true
+        type: string
+      component:
+        required: true
+        type: string
+      deploy:
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ntanis-kubernetes-${{ inputs.project }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-digest: ${{ steps.image.outputs.digest }}
+      image-repository: ${{ steps.contract.outputs.image-repository }}
+      environment-b64: ${{ steps.contract.outputs.environment-b64 }}
+      data-contract-b64: ${{ steps.contract.outputs.data-contract-b64 }}
+      realtime-contract-b64: ${{ steps.contract.outputs.realtime-contract-b64 }}
+    steps:
+      - name: Check out project source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Enforce central supply-chain policy
+        uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+
+      - id: contract
+        name: Validate the bounded Kubernetes contract
+        env:
+          COMPONENT: ${{ inputs.component }}
+          PROJECT: ${{ inputs.project }}
+        run: |
+          case "$PROJECT:$COMPONENT:$GITHUB_REPOSITORY" in
+            primed:cloud:primed-sh/cloud|djtube:service:ntanis-dev/djtube|lyrical:service:ntanis-dev/lyrical|tempo:service:ntanis-dev/tempo|justdoit:service:ntanis-dev/justdoit|layover:site:ntanis-dev/layover|proteus:site:ntanis-dev/proteus) ;;
+            *) echo 'Unsupported Kubernetes project target.' >&2; exit 2 ;;
+          esac
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const component = manifest.components?.find((candidate) => candidate?.id === process.env.COMPONENT)
+          if (manifest.schemaVersion !== 1 || manifest.project !== process.env.PROJECT || component?.type !== 'hosted'
+            || component.deployment !== 'automatic' || component.healthPath !== '/health'
+            || component.repository !== process.env.GITHUB_REPOSITORY || component.ref !== 'refs/heads/main') {
+            throw new Error('Invalid Kubernetes component manifest')
+          }
+          const realtime = manifest.realtime
+            ? { contractVersion: manifest.realtime.contractVersion, backend: manifest.realtime.backend, channels: manifest.realtime.channels.filter((channel) => channel.component === process.env.COMPONENT) }
+            : null
+          const output = (name, value) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${Buffer.from(JSON.stringify(value)).toString('base64')}\n`)
+          output('environment-b64', component.environment ?? [])
+          output('data-contract-b64', manifest.data
+            ? { ...manifest.data, project: manifest.project, schemaVersion: manifest.schemaVersion }
+            : null)
+          output('realtime-contract-b64', realtime)
+          NODE
+          image_repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "image-repository=$image_repository" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Verify project source
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          pnpm install --frozen-lockfile
+          case "$PROJECT" in
+            primed) pnpm run security:project-policy; pnpm run check; pnpm run build ;;
+            djtube) pnpm run lint; pnpm run build ;;
+            lyrical) pnpm run check ;;
+            tempo) pnpm run check; pnpm run build ;;
+            justdoit) pnpm run check; pnpm run build ;;
+            layover|proteus) pnpm run check:site ;;
+            *) exit 2 ;;
+          esac
+          pnpm run security:sbom
+
+      - name: Authenticate to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - id: image
+        name: Build and push the immutable image
+        env:
+          IMAGE_REPOSITORY: ${{ steps.contract.outputs.image-repository }}
+        run: |
+          metadata="$RUNNER_TEMP/image-metadata.json"
+          docker buildx build --pull --push --platform linux/amd64 \
+            --metadata-file "$metadata" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --tag "$IMAGE_REPOSITORY:$GITHUB_SHA" .
+          digest="$(jq -r '."containerimage.digest"' "$metadata")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    if: inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Queue the verified digest and wait for the health gate
+        env:
+          COMPONENT: ${{ inputs.component }}
+          DATA_CONTRACT_B64: ${{ needs.build.outputs.data-contract-b64 }}
+          ENVIRONMENT_B64: ${{ needs.build.outputs.environment-b64 }}
+          HUB_AUDIENCE: https://api.ntanis.dev/project-deployments
+          IMAGE_DIGEST: ${{ needs.build.outputs.image-digest }}
+          IMAGE_REPOSITORY: ${{ needs.build.outputs.image-repository }}
+          PROJECT: ${{ inputs.project }}
+          REALTIME_CONTRACT_B64: ${{ needs.build.outputs.realtime-contract-b64 }}
+        run: |
+          oidc_token() {
+            local url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
+            curl --fail --silent --show-error --retry 3 \
+              --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$url" | jq -er .value
+          }
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$IMAGE_REPOSITORY" =~ ^ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+$ ]]
+          environment="$(printf '%s' "$ENVIRONMENT_B64" | base64 --decode | jq -ec .)"
+          data_contract="$(printf '%s' "$DATA_CONTRACT_B64" | base64 --decode | jq -c .)"
+          realtime_contract="$(printf '%s' "$REALTIME_CONTRACT_B64" | base64 --decode | jq -c .)"
+          payload="$(jq -cn \
+            --arg commit "$GITHUB_SHA" \
+            --arg imageRepository "$IMAGE_REPOSITORY" \
+            --arg imageDigest "$IMAGE_DIGEST" \
+            --argjson environment "$environment" \
+            --argjson dataContract "$data_contract" \
+            --argjson realtimeContract "$realtime_contract" \
+            '{commit:$commit,imageRepository:$imageRepository,imageDigest:$imageDigest,environment:$environment,dataContract:$dataContract,realtimeContract:$realtimeContract}')"
+          token="$(oidc_token)"
+          request_id="$(curl --fail --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $token" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT" | jq -er .deploymentRequest.id)"
+          for _ in $(seq 1 60); do
+            token="$(oidc_token)"
+            status="$(curl --fail --silent --show-error --retry 3 \
+              --header "Authorization: Bearer $token" \
+              --header 'Content-Type: application/json' \
+              --data "$(jq -cn --arg commit "$GITHUB_SHA" '{commit:$commit}')" \
+              "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT/$request_id/status")"
+            state="$(printf '%s' "$status" | jq -er .deploymentRequest.status)"
+            case "$state" in
+              healthy) exit 0 ;;
+              failed) printf '%s' "$status" | jq -r '.deploymentRequest.failure_code // "deployment_failed"' >&2; exit 1 ;;
+              queued|deploying) sleep 10 ;;
+              *) echo 'Hub returned an invalid deployment state.' >&2; exit 1 ;;
+            esac
+          done
+          echo 'Timed out waiting for the Kubernetes deployment.' >&2
+          exit 1

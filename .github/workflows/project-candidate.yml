@@ -1,0 +1,104 @@
+name: Build project candidate
+
+concurrency:
+  group: ntanis-candidate-${{ inputs.project }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Hub project identifier
+        required: true
+        type: string
+      build-matrix:
+        description: JSON matrix with os, script, artifactDirectory, includeExtensions, includeFiles, platform, architecture, platformSigned and explicit install boolean
+        required: true
+        type: string
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install and verify the locked dependency graph
+        run: |
+          pnpm install --frozen-lockfile
+          npm audit signatures
+          pnpm audit --audit-level high
+      - id: package
+        name: Read package version
+        shell: bash
+        run: |
+          node -e "const fs=require('node:fs'); const version=String(JSON.parse(fs.readFileSync('package.json','utf8')).version ?? ''); if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/.test(version)) throw new Error('package.json contains an unsafe version'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + version + '\n')"
+      - name: Validate downloadable component policy
+        env:
+          PROJECT: ${{ inputs.project }}
+        run: |
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); if(m.schemaVersion!==1||m.project!==process.env.PROJECT||!Array.isArray(m.components)||!m.components.some(c=>c&&c.type==='downloadable'&&c.publication==='manual')) throw new Error('Missing manual downloadable component policy')"
+  build:
+    needs: metadata
+    name: ${{ matrix.platform }} · ${{ matrix.architecture }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.build-matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build candidate
+        run: pnpm run ${{ matrix.script }}
+      - name: Stage explicit release files
+        uses: ntanis-dev/ci/.github/actions/stage-candidate@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+        with:
+          source-directory: ${{ matrix.artifactDirectory }}
+          include-files: ${{ matrix.includeFiles }}
+          include-extensions: ${{ matrix.includeExtensions }}
+          output-directory: ntanis-stage
+      - name: Transfer candidate to isolated publisher
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: ntanis-stage
+          if-no-files-found: error
+          retention-days: 1
+  submit:
+    name: Submit atomic candidate
+    needs: [metadata, build]
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download candidates without executing repository code
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: candidate-*
+          path: .ntanis-candidates
+          merge-multiple: false
+      - name: Submit complete immutable candidate
+        uses: ntanis-dev/ci/.github/actions/submit-candidate@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+        with:
+          project: ${{ inputs.project }}
+          version: ${{ needs.metadata.outputs.version }}
+          artifact-directory: .ntanis-candidates
+          build-matrix: ${{ inputs.build-matrix }}

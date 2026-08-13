@@ -43,17 +43,16 @@ jobs:
           COMPONENT: ${{ inputs.component }}
           PROJECT: ${{ inputs.project }}
         run: |
-          case "$PROJECT:$COMPONENT:$GITHUB_REPOSITORY" in
-            primed:cloud:primed-sh/cloud|djtube:service:ntanis-dev/djtube|lyrical:service:ntanis-dev/lyrical|tempo:service:ntanis-dev/tempo|justdoit:service:ntanis-dev/justdoit|layover:site:ntanis-dev/layover|proteus:site:ntanis-dev/proteus) ;;
-            *) echo 'Unsupported Kubernetes project target.' >&2; exit 2 ;;
-          esac
           node - <<'NODE'
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
-          const component = manifest.components?.find((candidate) => candidate?.id === process.env.COMPONENT)
-          if (manifest.schemaVersion !== 1 || manifest.project !== process.env.PROJECT || component?.type !== 'hosted'
-            || component.deployment !== 'automatic' || component.healthPath !== '/health'
-            || component.repository !== process.env.GITHUB_REPOSITORY || component.ref !== 'refs/heads/main') {
+          const legacy = manifest.schemaVersion === 1
+          const project = legacy ? manifest.project : manifest.project?.id
+          const component = (legacy ? manifest.components : manifest.hosting?.components)?.find((candidate) => candidate?.id === process.env.COMPONENT)
+          const expectedImage = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}`
+          if (project !== process.env.PROJECT || !component || component.deployment !== 'automatic'
+            || (legacy && (component.type !== 'hosted' || component.repository !== process.env.GITHUB_REPOSITORY || component.ref !== 'refs/heads/main'))
+            || (!legacy && (manifest.schemaVersion !== 2 || component.imageRepository !== expectedImage))) {
             throw new Error('Invalid Kubernetes component manifest')
           }
           const realtime = manifest.realtime
@@ -62,7 +61,7 @@ jobs:
           const output = (name, value) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${Buffer.from(JSON.stringify(value)).toString('base64')}\n`)
           output('environment-b64', component.environment ?? [])
           output('data-contract-b64', manifest.data
-            ? { ...manifest.data, project: manifest.project, schemaVersion: manifest.schemaVersion }
+            ? { ...manifest.data, project, schemaVersion: 1 }
             : null)
           output('realtime-contract-b64', realtime)
           NODE
@@ -79,19 +78,14 @@ jobs:
           cache: pnpm
 
       - name: Verify project source
-        env:
-          PROJECT: ${{ inputs.project }}
         run: |
           pnpm install --frozen-lockfile
-          case "$PROJECT" in
-            primed) pnpm run security:project-policy; pnpm run check; pnpm run build ;;
-            djtube) pnpm run lint; pnpm run build ;;
-            lyrical) pnpm run check ;;
-            tempo) pnpm run check; pnpm run build ;;
-            justdoit) pnpm run check; pnpm run build ;;
-            layover|proteus) pnpm run check:site ;;
-            *) exit 2 ;;
-          esac
+          pnpm run security:project-policy --if-present
+          pnpm run lint --if-present
+          pnpm run check --if-present
+          pnpm run check:site --if-present
+          pnpm run test --if-present
+          pnpm run build --if-present
           pnpm run security:sbom
 
       - name: Authenticate to GHCR

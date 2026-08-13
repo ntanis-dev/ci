@@ -1,0 +1,39 @@
+name: Register project contract
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out exact project commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate and submit bounded contract
+        env:
+          HUB_AUDIENCE: https://api.ntanis.dev/project-registration
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const fail = () => { throw new Error('Invalid ntanis.project.json registration contract') }
+          if (manifest.schemaVersion !== 2 || !/^[a-z][a-z0-9-]{1,31}$/.test(manifest.project?.id)
+            || typeof manifest.project?.displayName !== 'string' || !Array.isArray(manifest.hosting?.modes)
+            || !Array.isArray(manifest.hosting?.components) || !manifest.capabilities || !Array.isArray(manifest.secrets)) fail()
+          if (JSON.stringify(manifest).length > 131072) fail()
+          NODE
+          url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
+          token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$url" | jq -er .value)"
+          payload="$(jq -cn --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF" --arg commit "$GITHUB_SHA" --slurpfile manifest ntanis.project.json '{repository:$repository,ref:$ref,commit:$commit,manifest:$manifest[0]}')"
+          curl --fail --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $token" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            https://api.ntanis.dev/v1/project-registrations | jq -e '.registration.status == "pending" or .registration.status == "approved"'

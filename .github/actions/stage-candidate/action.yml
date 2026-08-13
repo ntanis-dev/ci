@@ -1,0 +1,16 @@
+name: Stage explicit Ntanis release files
+description: Copies only declared top-level release outputs into the temporary transfer artifact.
+inputs:
+  source-directory:
+    required: true
+  include-files:
+    description: Comma-separated top-level file patterns. Takes precedence over include-extensions.
+    required: false
+  include-extensions:
+    description: Comma-separated extensions used to derive wildcard patterns when include-files is omitted.
+    required: false
+  output-directory:
+    required: true
+runs:
+  using: node24
+  main: stage.mjs

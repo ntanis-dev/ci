@@ -1,0 +1,5 @@
+name: Enforce ntanis.dev pnpm supply-chain policy
+description: Validates a caller repository's locked dependency and GitHub workflow controls without executing project code.
+runs:
+  using: node24
+  main: check.mjs

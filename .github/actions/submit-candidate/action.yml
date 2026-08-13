@@ -1,0 +1,15 @@
+name: Submit Ntanis project candidate
+description: Uploads bounded build artifacts to the Ntanis Hub using GitHub Actions OIDC.
+inputs:
+  project:
+    required: true
+  version:
+    required: true
+  artifact-directory:
+    required: true
+  build-matrix:
+    description: The exact build matrix whose required formats must all be present.
+    required: true
+runs:
+  using: node24
+  main: submit.mjs

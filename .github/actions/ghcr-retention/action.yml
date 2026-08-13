@@ -1,0 +1,21 @@
+name: Apply digest-aware GHCR retention
+description: Preserves Hub deployment and manifest digests before pruning old GHCR package versions.
+inputs:
+  github-token:
+    description: Repository GITHUB_TOKEN with package administration permission
+    required: true
+  delete:
+    description: Delete eligible versions; false performs a dry run
+    required: false
+    default: 'false'
+  keep-latest:
+    description: Minimum newest package versions retained regardless of deployment state
+    required: false
+    default: '10'
+  minimum-age-days:
+    description: Minimum age before a package version may be deleted
+    required: false
+    default: '7'
+runs:
+  using: node24
+  main: retention.mjs

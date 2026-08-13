@@ -24,9 +24,13 @@ jobs:
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
           const fail = () => { throw new Error('Invalid ntanis.project.json registration contract') }
-          if (manifest.schemaVersion !== 2 || !/^[a-z][a-z0-9-]{1,31}$/.test(manifest.project?.id)
+          if (manifest.schemaVersion !== 3 || !/^[a-z][a-z0-9-]{1,31}$/.test(manifest.project?.id)
             || typeof manifest.project?.displayName !== 'string' || !Array.isArray(manifest.hosting?.modes)
-            || !Array.isArray(manifest.hosting?.components) || !manifest.capabilities || !Array.isArray(manifest.secrets)) fail()
+            || !Array.isArray(manifest.hosting?.components) || !manifest.capabilities || !Array.isArray(manifest.secrets)
+            || !manifest.presentation || !['development', 'live', 'archived'].includes(manifest.presentation.status)
+            || typeof manifest.presentation.category !== 'string' || typeof manifest.presentation.icon !== 'string'
+            || typeof manifest.presentation.accent !== 'string' || !Array.isArray(manifest.presentation.features)
+            || !Array.isArray(manifest.presentation.technologies) || !Array.isArray(manifest.presentation.gallery)) fail()
           if (JSON.stringify(manifest).length > 131072) fail()
           NODE
           url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"

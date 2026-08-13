@@ -65,9 +65,9 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
           const applications = manifest.applications ?? []
           if (!Array.isArray(applications) || applications.length > 4) throw new Error('Invalid application declarations')
-          const componentIds = new Set((manifest.components ?? []).filter((item) => item?.type === 'hosted').map((item) => item.id))
+          const componentIds = new Set((manifest.schemaVersion === 2 ? manifest.hosting?.components ?? [] : manifest.components ?? []).filter((item) => manifest.schemaVersion === 2 ? item?.kind !== 'worker' : item?.type === 'hosted').map((item) => item.id))
           const applicationIds = new Set()
-          const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'origin', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
+          const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
           const sourcePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/
           const basePath = /^\/(?:[A-Za-z0-9._~-]+\/)*$/
           const identifier = /^[a-z][a-z0-9-]{0,31}$/
@@ -85,11 +85,8 @@ jobs:
             if (!identifier.test(application.id) || applicationIds.has(application.id)) throw new Error('Invalid PWA application identifier')
             applicationIds.add(application.id)
             if (application.type !== 'pwa' || application.contractVersion !== 1 || !componentIds.has(application.component)) throw new Error('Invalid PWA component binding')
-            let origin
-            try { origin = new URL(application.origin) } catch { throw new Error('Invalid PWA origin') }
-            if (origin.protocol !== 'https:' || origin.origin !== application.origin || origin.username || origin.password) throw new Error('Invalid PWA origin')
             if (typeof application.basePath !== 'string' || !basePath.test(application.basePath) || application.basePath.length > 240) throw new Error('Invalid PWA base path')
-            if (!['none', 'shell', 'local-data'].includes(application.offline) || application.update !== 'prompt' || !['none', 'optional', 'required'].includes(application.identity) || !['none', 'hub-entities', 'hub-entities-realtime'].includes(application.accountState) || !['none', 'anonymous-local-controls'].includes(application.telemetry)) throw new Error('Invalid PWA capability declaration')
+            if (!['none', 'shell', 'local-data'].includes(application.offline) || application.update !== 'prompt' || !['none', 'optional', 'required'].includes(application.identity) || !['none', 'hub-entities', 'hub-entities-realtime', 'hub-settings', 'hub-settings-realtime'].includes(application.accountState) || !['none', 'anonymous-local-controls'].includes(application.telemetry)) throw new Error('Invalid PWA capability declaration')
             if (application.identity === 'none' && application.accountState !== 'none') throw new Error('PWA account state requires identity')
             const webManifest = JSON.parse(readBounded(application.manifestPath, 64 * 1024).toString('utf8'))
             if (typeof webManifest.name !== 'string' || !webManifest.name.trim() || typeof webManifest.short_name !== 'string' || !webManifest.short_name.trim() || webManifest.id !== application.basePath || webManifest.scope !== application.basePath || typeof webManifest.start_url !== 'string' || !webManifest.start_url.startsWith(application.basePath) || !['standalone', 'minimal-ui'].includes(webManifest.display) || !/^#[0-9a-f]{6}$/i.test(webManifest.background_color) || !/^#[0-9a-f]{6}$/i.test(webManifest.theme_color)) throw new Error('Invalid installable web manifest')
@@ -106,11 +103,13 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
         run: |
-          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); if(m.schemaVersion!==1||m.project!==process.env.PROJECT||!Array.isArray(m.components)||!m.components.some(c=>c&&c.id==='service'&&c.type==='hosted'&&c.deployment==='automatic'&&c.healthPath==='/health'&&c.repository===process.env.GITHUB_REPOSITORY&&c.ref==='refs/heads/main')) throw new Error('Missing automatic hosted service policy')"
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); const project=m.schemaVersion===2?m.project?.id:m.project; const component=(m.schemaVersion===2?m.hosting?.components:m.components)?.find(c=>c?.id==='service'); if(project!==process.env.PROJECT||!component||component.deployment!=='automatic'||component.healthPath!=='/health'||(m.schemaVersion===1&&(component.type!=='hosted'||component.repository!==process.env.GITHUB_REPOSITORY||component.ref!=='refs/heads/main'))||(m.schemaVersion===2&&(component.imageRepository!==('ghcr.io/'+process.env.GITHUB_REPOSITORY.toLowerCase())))) throw new Error('Missing automatic hosted service policy')"
           node <<'NODE'
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
-          const declarations = manifest.components.find((component) => component?.id === 'service')?.environment ?? []
+          const declarations = manifest.schemaVersion === 2
+            ? (manifest.secrets ?? []).map((entry) => ({ name: entry.name, description: entry.purpose, required: entry.required, sensitive: entry.type === 'secret', type: entry.type === 'secret' ? 'secret' : 'string' }))
+            : manifest.components.find((component) => component?.id === 'service')?.environment ?? []
           const names = new Set()
           const reserved = new Set(['HOME', 'HOST', 'LANG', 'LD_PRELOAD', 'NODE_ENV', 'PATH', 'PORT', 'PWD', 'SHELL', 'TZ'])
           const prefixes = ['HUB_', 'NTANIS_', 'NODE_', 'NPM_', 'XDG_']
@@ -139,7 +138,8 @@ jobs:
             process.exit(0)
           }
           if (typeof declaration !== 'object' || Array.isArray(declaration) || Object.keys(declaration).some((key) => !['contractVersion', 'entities'].includes(key)) || declaration.contractVersion !== 1 || !Array.isArray(declaration.entities) || declaration.entities.length > 256 || Buffer.byteLength(JSON.stringify(declaration)) > 64 * 1024) throw new Error('Invalid data contract declaration')
-          const contract = { contractVersion: declaration.contractVersion, entities: declaration.entities, project: projectManifest.project, schemaVersion: projectManifest.schemaVersion }
+          const project = projectManifest.schemaVersion === 2 ? projectManifest.project?.id : projectManifest.project
+          const contract = { contractVersion: declaration.contractVersion, entities: declaration.entities, project, schemaVersion: 1 }
           const names = new Set()
           for (const entity of contract.entities) {
             if (!entity || typeof entity !== 'object' || Array.isArray(entity) || Object.keys(entity).some((key) => !['definition', 'entityType'].includes(key)) || typeof entity.entityType !== 'string' || !/^[a-z][a-z0-9_]{1,63}$/.test(entity.entityType) || names.has(entity.entityType)) throw new Error('Invalid entity declaration')
@@ -302,7 +302,7 @@ jobs:
         run: |
           oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
           oidc_token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$oidc_url" | jq -er .value)"
-          environment="$(jq -cer '.components[] | select(.id == "service") | .environment // []' ntanis.project.json)"
+          environment="$(jq -cer 'if .schemaVersion == 2 then [.secrets[]? | {name,description:.purpose,required,sensitive:(.type == "secret"),type:(if .type == "secret" then "secret" else "string" end)}] else [.components[] | select(.id == "service") | .environment[]?] end' ntanis.project.json)"
           if [ -f ntanis-data-contract.json ]; then data_contract="$(jq -cer . ntanis-data-contract.json)"; else data_contract='null'; fi
           payload="$(jq -cn \
             --arg artifactSha256 "$ARTIFACT_SHA256" \

@@ -59,7 +59,13 @@ jobs:
             ? { contractVersion: manifest.realtime.contractVersion, backend: manifest.realtime.backend, channels: manifest.realtime.channels.filter((channel) => channel.component === process.env.COMPONENT) }
             : null
           const output = (name, value) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${Buffer.from(JSON.stringify(value)).toString('base64')}\n`)
-          output('environment-b64', component.environment ?? [])
+          output('environment-b64', legacy ? component.environment ?? [] : (manifest.secrets ?? []).map((entry) => ({
+            name: entry.name,
+            description: entry.purpose,
+            required: entry.required,
+            sensitive: entry.type === 'secret',
+            type: entry.type === 'secret' ? 'secret' : 'string'
+          })))
           output('data-contract-b64', manifest.data
             ? { ...manifest.data, project, schemaVersion: 1 }
             : null)

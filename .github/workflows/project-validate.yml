@@ -43,12 +43,19 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
-          if (manifest.schemaVersion !== 1 || manifest.project !== process.env.PROJECT || !Array.isArray(manifest.components) || manifest.components.length < 1 || manifest.components.length > 8) throw new Error('Invalid ntanis.dev project manifest')
+          const project = manifest.schemaVersion === 2 ? manifest.project?.id : manifest.project
+          const components = manifest.schemaVersion === 2 ? [...(manifest.hosting?.components ?? []), ...(manifest.artifacts ?? [])] : manifest.components
+          if (![1, 2].includes(manifest.schemaVersion) || project !== process.env.PROJECT || !Array.isArray(components) || components.length < 1 || components.length > 32) throw new Error('Invalid ntanis.dev project manifest')
           const ids = new Set()
-          for (const component of manifest.components) {
-            if (!component || typeof component !== 'object' || !/^[a-z][a-z0-9-]{0,31}$/.test(component.id) || ids.has(component.id)) throw new Error('Invalid component identifier')
-            ids.add(component.id)
-            if (component.type === 'hosted') {
+          for (const component of components) {
+            const key = manifest.schemaVersion === 2 && component?.publication === 'manual' ? `${component.id}:${component.platform}:${component.architecture}` : component?.id
+            if (!component || typeof component !== 'object' || !/^[a-z][a-z0-9-]{0,31}$/.test(component.id) || typeof key !== 'string' || ids.has(key)) throw new Error('Invalid component identifier')
+            ids.add(key)
+            if (manifest.schemaVersion === 2 && ['site', 'api', 'worker'].includes(component.kind)) {
+              if (!['automatic', 'manual'].includes(component.deployment) || typeof component.migrations !== 'boolean' || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(component.healthPath) || !/^ghcr[.]io\/[a-z0-9_.-]+\/[a-z0-9_.\/-]+$/.test(component.imageRepository) || !['site-xs', 'service-s', 'worker-s'].includes(component.resourceClass) || !Number.isInteger(component.minReplicas) || !Number.isInteger(component.maxReplicas) || component.maxReplicas < component.minReplicas) throw new Error('Invalid hosted component')
+            } else if (manifest.schemaVersion === 2 && component.publication === 'manual') {
+              if (typeof component.platform !== 'string' || typeof component.architecture !== 'string' || !Array.isArray(component.formats) || component.formats.length < 1) throw new Error('Invalid downloadable component')
+            } else if (component.type === 'hosted') {
               if (!['automatic', 'manual'].includes(component.deployment) || typeof component.migrations !== 'boolean' || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(component.healthPath) || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(component.repository) || !/^refs\/heads\/[A-Za-z0-9._/-]{1,180}$/.test(component.ref)) throw new Error('Invalid hosted component')
             } else if (component.type === 'downloadable') {
               if (component.publication !== 'manual') throw new Error('Downloadable publication must be manual')
@@ -63,9 +70,9 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
           const applications = manifest.applications ?? []
           if (!Array.isArray(applications) || applications.length > 4) throw new Error('Invalid application declarations')
-          const componentIds = new Set((manifest.components ?? []).filter((item) => item?.type === 'hosted').map((item) => item.id))
+          const componentIds = new Set((manifest.schemaVersion === 2 ? manifest.hosting?.components ?? [] : manifest.components ?? []).filter((item) => manifest.schemaVersion === 2 ? item?.kind !== 'worker' : item?.type === 'hosted').map((item) => item.id))
           const applicationIds = new Set()
-          const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'origin', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
+          const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
           const sourcePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/
           const basePath = /^\/(?:[A-Za-z0-9._~-]+\/)*$/
           const identifier = /^[a-z][a-z0-9-]{0,31}$/
@@ -83,11 +90,8 @@ jobs:
             if (!identifier.test(application.id) || applicationIds.has(application.id)) throw new Error('Invalid PWA application identifier')
             applicationIds.add(application.id)
             if (application.type !== 'pwa' || application.contractVersion !== 1 || !componentIds.has(application.component)) throw new Error('Invalid PWA component binding')
-            let origin
-            try { origin = new URL(application.origin) } catch { throw new Error('Invalid PWA origin') }
-            if (origin.protocol !== 'https:' || origin.origin !== application.origin || origin.username || origin.password) throw new Error('Invalid PWA origin')
             if (typeof application.basePath !== 'string' || !basePath.test(application.basePath) || application.basePath.length > 240) throw new Error('Invalid PWA base path')
-            if (!['none', 'shell', 'local-data'].includes(application.offline) || application.update !== 'prompt' || !['none', 'optional', 'required'].includes(application.identity) || !['none', 'hub-settings', 'hub-settings-realtime'].includes(application.accountState) || !['none', 'anonymous-local-controls'].includes(application.telemetry)) throw new Error('Invalid PWA capability declaration')
+            if (!['none', 'shell', 'local-data'].includes(application.offline) || application.update !== 'prompt' || !['none', 'optional', 'required'].includes(application.identity) || !['none', 'hub-entities', 'hub-entities-realtime', 'hub-settings', 'hub-settings-realtime'].includes(application.accountState) || !['none', 'anonymous-local-controls'].includes(application.telemetry)) throw new Error('Invalid PWA capability declaration')
             if (application.identity === 'none' && application.accountState !== 'none') throw new Error('PWA account state requires identity')
             const webManifest = JSON.parse(readBounded(application.manifestPath, 64 * 1024).toString('utf8'))
             if (typeof webManifest.name !== 'string' || !webManifest.name.trim() || typeof webManifest.short_name !== 'string' || !webManifest.short_name.trim() || webManifest.id !== application.basePath || webManifest.scope !== application.basePath || typeof webManifest.start_url !== 'string' || !webManifest.start_url.startsWith(application.basePath) || !['standalone', 'minimal-ui'].includes(webManifest.display) || !/^#[0-9a-f]{6}$/i.test(webManifest.background_color) || !/^#[0-9a-f]{6}$/i.test(webManifest.theme_color)) throw new Error('Invalid installable web manifest')

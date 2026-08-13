@@ -63,9 +63,10 @@ jobs:
           const fs = require('node:fs')
           const path = require('node:path')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const modern = [2, 3].includes(manifest.schemaVersion)
           const applications = manifest.applications ?? []
           if (!Array.isArray(applications) || applications.length > 4) throw new Error('Invalid application declarations')
-          const componentIds = new Set((manifest.schemaVersion === 2 ? manifest.hosting?.components ?? [] : manifest.components ?? []).filter((item) => manifest.schemaVersion === 2 ? item?.kind !== 'worker' : item?.type === 'hosted').map((item) => item.id))
+          const componentIds = new Set((modern ? manifest.hosting?.components ?? [] : manifest.components ?? []).filter((item) => modern ? item?.kind !== 'worker' : item?.type === 'hosted').map((item) => item.id))
           const applicationIds = new Set()
           const allowed = new Set(['id', 'type', 'contractVersion', 'component', 'basePath', 'manifestPath', 'serviceWorkerPath', 'offline', 'update', 'identity', 'accountState', 'telemetry'])
           const sourcePath = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/
@@ -103,11 +104,11 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
         run: |
-          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); const project=m.schemaVersion===2?m.project?.id:m.project; const component=(m.schemaVersion===2?m.hosting?.components:m.components)?.find(c=>c?.id==='service'); if(project!==process.env.PROJECT||!component||component.deployment!=='automatic'||component.healthPath!=='/health'||(m.schemaVersion===1&&(component.type!=='hosted'||component.repository!==process.env.GITHUB_REPOSITORY||component.ref!=='refs/heads/main'))||(m.schemaVersion===2&&(component.imageRepository!==('ghcr.io/'+process.env.GITHUB_REPOSITORY.toLowerCase())))) throw new Error('Missing automatic hosted service policy')"
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); const modern=[2,3].includes(m.schemaVersion); const project=modern?m.project?.id:m.project; const component=(modern?m.hosting?.components:m.components)?.find(c=>c?.id==='service'); if(![1,2,3].includes(m.schemaVersion)||project!==process.env.PROJECT||!component||component.deployment!=='automatic'||component.healthPath!=='/health'||(m.schemaVersion===1&&(component.type!=='hosted'||component.repository!==process.env.GITHUB_REPOSITORY||component.ref!=='refs/heads/main'))||(modern&&(component.imageRepository!==('ghcr.io/'+process.env.GITHUB_REPOSITORY.toLowerCase())))) throw new Error('Missing automatic hosted service policy')"
           node <<'NODE'
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
-          const declarations = manifest.schemaVersion === 2
+          const declarations = [2, 3].includes(manifest.schemaVersion)
             ? (manifest.secrets ?? []).map((entry) => ({ name: entry.name, description: entry.purpose, required: entry.required, sensitive: entry.type === 'secret', type: entry.type === 'secret' ? 'secret' : 'string' }))
             : manifest.components.find((component) => component?.id === 'service')?.environment ?? []
           const names = new Set()
@@ -138,7 +139,7 @@ jobs:
             process.exit(0)
           }
           if (typeof declaration !== 'object' || Array.isArray(declaration) || Object.keys(declaration).some((key) => !['contractVersion', 'entities'].includes(key)) || declaration.contractVersion !== 1 || !Array.isArray(declaration.entities) || declaration.entities.length > 256 || Buffer.byteLength(JSON.stringify(declaration)) > 64 * 1024) throw new Error('Invalid data contract declaration')
-          const project = projectManifest.schemaVersion === 2 ? projectManifest.project?.id : projectManifest.project
+          const project = [2, 3].includes(projectManifest.schemaVersion) ? projectManifest.project?.id : projectManifest.project
           const contract = { contractVersion: declaration.contractVersion, entities: declaration.entities, project, schemaVersion: 1 }
           const names = new Set()
           for (const entity of contract.entities) {
@@ -302,7 +303,7 @@ jobs:
         run: |
           oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
           oidc_token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$oidc_url" | jq -er .value)"
-          environment="$(jq -cer 'if .schemaVersion == 2 then [.secrets[]? | {name,description:.purpose,required,sensitive:(.type == "secret"),type:(if .type == "secret" then "secret" else "string" end)}] else [.components[] | select(.id == "service") | .environment[]?] end' ntanis.project.json)"
+          environment="$(jq -cer 'if (.schemaVersion == 2 or .schemaVersion == 3) then [.secrets[]? | {name,description:.purpose,required,sensitive:(.type == "secret"),type:(if .type == "secret" then "secret" else "string" end)}] else [.components[] | select(.id == "service") | .environment[]?] end' ntanis.project.json)"
           if [ -f ntanis-data-contract.json ]; then data_contract="$(jq -cer . ntanis-data-contract.json)"; else data_contract='null'; fi
           payload="$(jq -cn \
             --arg artifactSha256 "$ARTIFACT_SHA256" \

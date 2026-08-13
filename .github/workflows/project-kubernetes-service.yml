@@ -47,12 +47,13 @@ jobs:
           const fs = require('node:fs')
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
           const legacy = manifest.schemaVersion === 1
+          const modern = [2, 3].includes(manifest.schemaVersion)
           const project = legacy ? manifest.project : manifest.project?.id
           const component = (legacy ? manifest.components : manifest.hosting?.components)?.find((candidate) => candidate?.id === process.env.COMPONENT)
           const expectedImage = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}`
-          if (project !== process.env.PROJECT || !component || component.deployment !== 'automatic'
+          if ((!legacy && !modern) || project !== process.env.PROJECT || !component || component.deployment !== 'automatic'
             || (legacy && (component.type !== 'hosted' || component.repository !== process.env.GITHUB_REPOSITORY || component.ref !== 'refs/heads/main'))
-            || (!legacy && (manifest.schemaVersion !== 2 || component.imageRepository !== expectedImage))) {
+            || (modern && component.imageRepository !== expectedImage)) {
             throw new Error('Invalid Kubernetes component manifest')
           }
           const realtime = manifest.realtime

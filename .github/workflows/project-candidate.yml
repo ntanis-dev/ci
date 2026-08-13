@@ -45,7 +45,7 @@ jobs:
         env:
           PROJECT: ${{ inputs.project }}
         run: |
-          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); const project=m.schemaVersion===2?m.project?.id:m.project; const downloadable=m.schemaVersion===2?m.artifacts:m.components; if(project!==process.env.PROJECT||!Array.isArray(downloadable)||!downloadable.some(c=>c&&((m.schemaVersion===2&&c.id&&c.platform&&c.architecture&&Array.isArray(c.formats))||(m.schemaVersion===1&&c.type==='downloadable'))&&c.publication==='manual')) throw new Error('Missing manual downloadable component policy')"
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('ntanis.project.json','utf8')); const modern=[2,3].includes(m.schemaVersion); const project=modern?m.project?.id:m.project; const downloadable=modern?m.artifacts:m.components; if(project!==process.env.PROJECT||!Array.isArray(downloadable)||!downloadable.some(c=>c&&((modern&&c.id&&c.platform&&c.architecture&&Array.isArray(c.formats))||(m.schemaVersion===1&&c.type==='downloadable'))&&c.publication==='manual')) throw new Error('Missing manual downloadable component policy')"
   build:
     needs: metadata
     name: ${{ matrix.platform }} · ${{ matrix.architecture }}

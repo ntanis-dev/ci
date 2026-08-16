@@ -152,6 +152,27 @@ jobs:
           fs.writeFileSync('ntanis-data-contract.json', `${JSON.stringify(contract)}\n`, { flag: 'wx' })
           NODE
 
+      - name: Validate and derive realtime service contract
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const contract = manifest.realtime
+          if (contract === undefined) process.exit(0)
+          const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort().join() === [...keys].sort().join()
+          const identifier = /^[a-z][a-z0-9-]{0,31}$/
+          const socketPath = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/
+          const components = new Set((manifest.components ?? []).filter((item) => item?.type === 'hosted').map((item) => item.id))
+          if (!exact(contract, ['backend', 'channels', 'contractVersion']) || contract.contractVersion !== 1 || contract.backend !== 'valkey' || !Array.isArray(contract.channels) || contract.channels.length < 1 || contract.channels.length > 16) throw new Error('Invalid realtime contract')
+          const ids = new Set()
+          for (const channel of contract.channels) {
+            if (!exact(channel, ['authentication', 'component', 'id', 'maximumPayloadBytes', 'path', 'recovery', 'transport']) || !identifier.test(channel.id) || ids.has(channel.id) || !components.has(channel.component) || !['websocket', 'socket.io'].includes(channel.transport) || typeof channel.path !== 'string' || channel.path.length > 240 || !socketPath.test(channel.path) || !['anonymous', 'hub-ticket', 'project-session'].includes(channel.authentication) || !['refresh', 'resumable'].includes(channel.recovery) || !Number.isInteger(channel.maximumPayloadBytes) || channel.maximumPayloadBytes < 256 || channel.maximumPayloadBytes > 1048576) throw new Error('Invalid realtime channel')
+            ids.add(channel.id)
+          }
+          const channels = contract.channels.filter((channel) => channel.component === 'service')
+          if (channels.length) fs.writeFileSync('ntanis-realtime-contract.json', `${JSON.stringify({ backend: 'valkey', channels, contractVersion: 1 })}\n`, { flag: 'wx' })
+          NODE
+
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
@@ -305,16 +326,18 @@ jobs:
           oidc_token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$oidc_url" | jq -er .value)"
           environment="$(jq -cer 'if (.schemaVersion == 2 or .schemaVersion == 3) then [.secrets[]? | {name,description:.purpose,required,sensitive:(.type == "secret"),type:(if .type == "secret" then "secret" else "string" end)}] else [.components[] | select(.id == "service") | .environment[]?] end' ntanis.project.json)"
           if [ -f ntanis-data-contract.json ]; then data_contract="$(jq -cer . ntanis-data-contract.json)"; else data_contract='null'; fi
+          if [ -f ntanis-realtime-contract.json ]; then realtime_contract="$(jq -cer . ntanis-realtime-contract.json)"; else realtime_contract='null'; fi
           payload="$(jq -cn \
             --arg artifactSha256 "$ARTIFACT_SHA256" \
             --arg commit "$GITHUB_SHA" \
             --argjson environment "$environment" \
             --argjson dataContract "$data_contract" \
+            --argjson realtimeContract "$realtime_contract" \
             --arg failureCode "$FAILURE_CODE" \
             --arg finishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg startedAt "$STARTED_AT" \
             --arg status "$STATUS" \
-            '{artifactSha256:$artifactSha256,commit:$commit,dataContract:$dataContract,environment:$environment,finishedAt:$finishedAt,startedAt:$startedAt,status:$status} + (if $failureCode == "" then {} else {failureCode:$failureCode} end)')"
+            '{artifactSha256:$artifactSha256,commit:$commit,dataContract:$dataContract,environment:$environment,finishedAt:$finishedAt,realtimeContract:$realtimeContract,startedAt:$startedAt,status:$status} + (if $failureCode == "" then {} else {failureCode:$failureCode} end)')"
           curl --fail --silent --show-error --retry 3 \
             --header "Authorization: Bearer $oidc_token" \
             --header 'Content-Type: application/json' \

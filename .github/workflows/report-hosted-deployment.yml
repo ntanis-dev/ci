@@ -28,6 +28,11 @@ on:
         required: false
         default: '[]'
         type: string
+      realtime-json:
+        description: Component-scoped ntanis.dev realtime contract
+        required: false
+        default: 'null'
+        type: string
 
 permissions:
   contents: read
@@ -44,6 +49,7 @@ jobs:
           FAILURE_CODE: ${{ inputs.failure-code }}
           ENVIRONMENT_JSON: ${{ inputs.environment-json }}
           PROJECT: ${{ inputs.project }}
+          REALTIME_JSON: ${{ inputs.realtime-json }}
           STATUS: ${{ inputs.status }}
         run: |
           [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{1,31}$ ]]
@@ -52,6 +58,7 @@ jobs:
           [[ "$STATUS" == healthy || "$STATUS" == failed ]]
           if [ "$STATUS" = failed ]; then [[ "$FAILURE_CODE" =~ ^[a-z][a-z0-9_.-]{0,95}$ ]]; else test -z "$FAILURE_CODE"; fi
           printf '%s' "$ENVIRONMENT_JSON" | jq -e 'type == "array" and length <= 100' >/dev/null
+          printf '%s' "$REALTIME_JSON" | jq -e '. == null or (.contractVersion == 1 and .backend == "valkey" and (.channels | type == "array" and length > 0 and length <= 16))' >/dev/null
       - name: Report to Hub with repository-bound OIDC
         env:
           ARTIFACT_SHA256: ${{ inputs.artifact-sha256 }}
@@ -60,6 +67,7 @@ jobs:
           ENVIRONMENT_JSON: ${{ inputs.environment-json }}
           HUB_AUDIENCE: https://api.ntanis.dev/project-deployments
           PROJECT: ${{ inputs.project }}
+          REALTIME_JSON: ${{ inputs.realtime-json }}
           STARTED_AT: ${{ inputs.started-at }}
           STATUS: ${{ inputs.status }}
         run: |
@@ -69,11 +77,12 @@ jobs:
             --arg artifactSha256 "$ARTIFACT_SHA256" \
             --arg commit "$GITHUB_SHA" \
             --argjson environment "$ENVIRONMENT_JSON" \
+            --argjson realtimeContract "$REALTIME_JSON" \
             --arg failureCode "$FAILURE_CODE" \
             --arg finishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg startedAt "$STARTED_AT" \
             --arg status "$STATUS" \
-            '{artifactSha256:$artifactSha256,commit:$commit,environment:$environment,finishedAt:$finishedAt,status:$status}
+            '{artifactSha256:$artifactSha256,commit:$commit,environment:$environment,finishedAt:$finishedAt,realtimeContract:$realtimeContract,status:$status}
               + (if $startedAt == "" then {} else {startedAt:$startedAt} end)
               + (if $failureCode == "" then {} else {failureCode:$failureCode} end)')"
           curl --fail --silent --show-error --retry 3 \

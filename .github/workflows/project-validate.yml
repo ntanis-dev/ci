@@ -105,6 +105,24 @@ jobs:
             if (!worker.includes(application.basePath)) throw new Error('PWA service worker is not visibly scoped to its declared base path')
           }
           NODE
+      - name: Validate optional realtime application contract
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
+          const contract = manifest.realtime
+          if (contract === undefined) process.exit(0)
+          const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort().join() === [...keys].sort().join()
+          const identifier = /^[a-z][a-z0-9-]{0,31}$/
+          const socketPath = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/
+          const components = new Set((manifest.components ?? []).filter((item) => item?.type === 'hosted').map((item) => item.id))
+          if (!exact(contract, ['backend', 'channels', 'contractVersion']) || contract.contractVersion !== 1 || contract.backend !== 'valkey' || !Array.isArray(contract.channels) || contract.channels.length < 1 || contract.channels.length > 16) throw new Error('Invalid realtime contract')
+          const ids = new Set()
+          for (const channel of contract.channels) {
+            if (!exact(channel, ['authentication', 'component', 'id', 'maximumPayloadBytes', 'path', 'recovery', 'transport']) || !identifier.test(channel.id) || ids.has(channel.id) || !components.has(channel.component) || !['websocket', 'socket.io'].includes(channel.transport) || typeof channel.path !== 'string' || channel.path.length > 240 || !socketPath.test(channel.path) || !['anonymous', 'hub-ticket', 'project-session'].includes(channel.authentication) || !['refresh', 'resumable'].includes(channel.recovery) || !Number.isInteger(channel.maximumPayloadBytes) || channel.maximumPayloadBytes < 256 || channel.maximumPayloadBytes > 1048576) throw new Error('Invalid realtime channel')
+            ids.add(channel.id)
+          }
+          NODE
       - name: Install and verify the locked dependency graph
         run: |
           pnpm install --frozen-lockfile

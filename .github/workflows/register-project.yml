@@ -36,8 +36,16 @@ jobs:
           url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "$HUB_AUDIENCE" | jq -sRr @uri)"
           token="$(curl --fail --silent --show-error --retry 3 --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$url" | jq -er .value)"
           payload="$(jq -cn --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF" --arg commit "$GITHUB_SHA" --slurpfile manifest ntanis.project.json '{repository:$repository,ref:$ref,commit:$commit,manifest:$manifest[0]}')"
-          curl --fail --silent --show-error --retry 3 \
+          response="$RUNNER_TEMP/hub-registration-response.json"
+          status="$(curl --silent --show-error --retry 3 --retry-all-errors \
+            --output "$response" --write-out '%{http_code}' \
             --header "Authorization: Bearer $token" \
             --header 'Content-Type: application/json' \
             --data "$payload" \
-            https://api.ntanis.dev/v1/project-registrations | jq -e '.registration.status == "pending" or .registration.status == "approved"'
+            https://api.ntanis.dev/v1/project-registrations)"
+          if [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+            error="$(jq -r 'if (.error | type) == "string" then .error else "unknown_error" end' "$response" 2>/dev/null || printf unknown_error)"
+            echo "Hub registration rejected (HTTP $status): $error" >&2
+            exit 1
+          fi
+          jq -e '.registration.status == "pending" or .registration.status == "approved"' "$response"

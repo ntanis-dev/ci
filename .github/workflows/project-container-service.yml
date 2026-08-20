@@ -134,6 +134,23 @@ jobs:
             curl --fail --silent --show-error --retry 3 \
               --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$url" | jq -er .value
           }
+          hub_post() {
+            local endpoint="$1"
+            local body="$2"
+            local output="$3"
+            local code
+            code="$(curl --silent --show-error --retry 3 --retry-all-errors \
+              --output "$output" --write-out '%{http_code}' \
+              --header "Authorization: Bearer $token" \
+              --header 'Content-Type: application/json' \
+              --data "$body" "$endpoint")"
+            if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+              local error
+              error="$(jq -r 'if (.error | type) == "string" then .error else "unknown_error" end' "$output" 2>/dev/null || printf unknown_error)"
+              echo "Hub deployment request rejected (HTTP $code): $error" >&2
+              return 1
+            fi
+          }
           [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "$IMAGE_REPOSITORY" =~ ^ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+$ ]]
           environment="$(printf '%s' "$ENVIRONMENT_B64" | base64 --decode | jq -ec .)"
@@ -148,18 +165,14 @@ jobs:
             --argjson realtimeContract "$realtime_contract" \
             '{commit:$commit,imageRepository:$imageRepository,imageDigest:$imageDigest,environment:$environment,dataContract:$dataContract,realtimeContract:$realtimeContract}')"
           token="$(oidc_token)"
-          request_id="$(curl --fail --silent --show-error --retry 3 \
-            --header "Authorization: Bearer $token" \
-            --header 'Content-Type: application/json' \
-            --data "$payload" \
-            "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT" | jq -er .deploymentRequest.id)"
+          response="$RUNNER_TEMP/hub-deployment-response.json"
+          hub_post "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT" "$payload" "$response"
+          request_id="$(jq -er .deploymentRequest.id "$response")"
           for _ in $(seq 1 60); do
             token="$(oidc_token)"
-            status="$(curl --fail --silent --show-error --retry 3 \
-              --header "Authorization: Bearer $token" \
-              --header 'Content-Type: application/json' \
-              --data "$(jq -cn --arg commit "$GITHUB_SHA" '{commit:$commit}')" \
-              "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT/$request_id/status")"
+            status_payload="$(jq -cn --arg commit "$GITHUB_SHA" '{commit:$commit}')"
+            hub_post "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT/$request_id/status" "$status_payload" "$response"
+            status="$(<"$response")"
             state="$(printf '%s' "$status" | jq -er .deploymentRequest.status)"
             case "$state" in
               healthy) exit 0 ;;

@@ -51,6 +51,7 @@ jobs:
     name: ${{ matrix.platform }} · ${{ matrix.architecture }}
     permissions:
       contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -74,31 +75,24 @@ jobs:
           include-files: ${{ matrix.includeFiles }}
           include-extensions: ${{ matrix.includeExtensions }}
           output-directory: ntanis-stage
-      - name: Transfer candidate to isolated publisher
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: candidate-${{ matrix.platform }}-${{ matrix.architecture }}
-          path: ntanis-stage
-          if-no-files-found: error
-          retention-days: 1
-  submit:
-    name: Submit atomic candidate
-    needs: [metadata, build]
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download candidates without executing repository code
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          pattern: candidate-*
-          path: .ntanis-candidates
-          merge-multiple: false
-      - name: Submit complete immutable candidate
-        uses: ntanis-dev/ci/.github/actions/submit-candidate@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4
+      - name: Upload target directly to Hub
+        uses: ntanis-dev/ci/.github/actions/upload-candidate-target@93312b0f924457454e0b37e6e633b8997bcc1937
         with:
           project: ${{ inputs.project }}
           version: ${{ needs.metadata.outputs.version }}
-          artifact-directory: .ntanis-candidates
-          build-matrix: ${{ inputs.build-matrix }}
+          artifact-directory: ntanis-stage
+          platform: ${{ matrix.platform }}
+          architecture: ${{ matrix.architecture }}
+          include-extensions: ${{ matrix.includeExtensions }}
+          platform-signed: ${{ matrix.platformSigned }}
+  submit:
+    name: Finalize atomic candidate
+    needs: [metadata, build]
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize complete immutable candidate
+        uses: ntanis-dev/ci/.github/actions/finalize-candidate@93312b0f924457454e0b37e6e633b8997bcc1937
+        with:
+          project: ${{ inputs.project }}

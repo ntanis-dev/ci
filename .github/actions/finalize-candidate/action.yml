@@ -1,0 +1,8 @@
+name: Finalize Ntanis candidate
+description: Atomically finalizes the current workflow run after every target has uploaded directly to Hub.
+inputs:
+  project:
+    required: true
+runs:
+  using: node24
+  main: finalize.mjs

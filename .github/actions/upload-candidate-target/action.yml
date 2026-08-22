@@ -1,0 +1,20 @@
+name: Upload Ntanis candidate target
+description: Uploads one platform target directly to Hub using GitHub Actions OIDC without GitHub artifact storage.
+inputs:
+  project:
+    required: true
+  version:
+    required: true
+  artifact-directory:
+    required: true
+  platform:
+    required: true
+  architecture:
+    required: true
+  include-extensions:
+    required: true
+  platform-signed:
+    required: true
+runs:
+  using: node24
+  main: upload.mjs

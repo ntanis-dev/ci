@@ -5,6 +5,27 @@ Internal CI workflows and actions for repositories owned and operated by
 
 This repository is not an integration surface for third-party projects. Its contents may change without notice, and external use is unsupported.
 
+## Release candidates
+
+`project-candidate.yml` builds the repository-declared platform matrix without using GitHub Actions artifact storage. Each isolated platform runner stages only its declared top-level release files, registers that target through the repository-bound GitHub OIDC identity, and uploads bounded checksummed chunks directly to Hub. The final job sends no binaries; it only asks Hub to atomically mark the candidate ready after every configured target and byte has been verified. Hub removes incomplete upload sessions after 24 hours.
+
+Candidate callers are release controls, not continuous-build workflows. Trigger them explicitly from `workflow_dispatch` on the registered branch and pin the reusable workflow to an exact commit:
+
+```yaml
+name: Build candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  candidate:
+    uses: ntanis-dev/ci/.github/workflows/project-candidate.yml@<exact-commit>
+    with:
+      project: example
+      build-matrix: '<repository-owned JSON matrix>'
+```
+
 ## Hosted project containers
 
 `project-container-service.yml` publishes and optionally deploys an approved

@@ -36,6 +36,13 @@ jobs:
     steps:
       - name: Check out verified project source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          lfs: true
+
+      - name: Verify Git LFS objects are materialized
+        run: |
+          git lfs fsck
+          git lfs ls-files --json | jq -e 'all(.files[]; .checkout == true and .downloaded == true)'
 
       - id: contract
         name: Validate the bounded Kubernetes contract

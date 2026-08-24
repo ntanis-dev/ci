@@ -36,6 +36,9 @@ the Hub contract, requires digest-pinned Dockerfile base images, publishes the
 commit-tagged image, captures its immutable registry digest, and submits only
 the bounded deployment request with GitHub OIDC. It receives no Hub or
 Kubernetes credential.
+Before validation and image construction, it materializes every Git LFS object
+and fails closed if any tracked file remains an unresolved pointer. The legacy
+pnpm-specific Kubernetes workflow enforces the same checkout boundary.
 
 Callers must pin the reusable workflow to an exact commit:
 

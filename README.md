@@ -48,6 +48,12 @@ resolved paths must stay inside the checkout, and the context must include a
 keys. Runtime environment requirements include only secrets declared for that
 component (plus unscoped declarations); these are names, never values.
 
+Optional `public-build-args` is a bounded JSON object of `PUBLIC_` names and
+single-line string values. These values are baked into the image and may appear
+in public browser bundles and build metadata. Use repository variables for
+public identifiers; never pass secrets or private credentials. Arguments are
+validated and passed as separate quoted Docker arguments without shell evaluation.
+
 Run `node --test tests/*.test.mjs` to exercise the actual embedded contract
 validator, including path confinement, image ownership, and secret selection.
 

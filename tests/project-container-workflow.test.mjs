@@ -8,7 +8,7 @@ import test from 'node:test'
 const workflow = readFileSync(new URL('../.github/workflows/project-container-service.yml', import.meta.url), 'utf8')
 const source = workflow.match(/          node - <<'NODE'\r?\n([\s\S]*?)          NODE/)[1].replace(/^          /gm, '')
 
-function validate({ image = 'ghcr.io/criticalscripts-shop/web/store', context = '.', dockerfile = 'store/Dockerfile', setup } = {}) {
+function validate({ image = 'ghcr.io/criticalscripts-shop/web/store', context = '.', dockerfile = 'store/Dockerfile', publicBuildArgs = '{}', setup } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'ntanis-container-test-'))
   try {
     mkdirSync(join(root, 'store'))
@@ -27,7 +27,7 @@ function validate({ image = 'ghcr.io/criticalscripts-shop/web/store', context = 
     const output = join(root, 'output')
     const result = spawnSync(process.execPath, ['--input-type=commonjs', '-e', source], {
       cwd: root, encoding: 'utf8',
-      env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'criticalscripts-shop/web', COMPONENT: 'store', PROJECT: 'criticalscripts', BUILD_CONTEXT: context, DOCKERFILE: dockerfile }
+      env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: 'criticalscripts-shop/web', COMPONENT: 'store', PROJECT: 'criticalscripts', BUILD_CONTEXT: context, DOCKERFILE: dockerfile, PUBLIC_BUILD_ARGS: publicBuildArgs }
     })
     return { ...result, output: result.status === 0 ? Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)])) : {} }
   } finally { rmSync(root, { recursive: true, force: true }) }
@@ -69,4 +69,23 @@ test('component builds use separate concurrency keys and shell-quoted paths', ()
   assert.match(workflow, /ntanis-container-\$\{\{ inputs.project \}\}-\$\{\{ inputs.component \}\}/)
   assert.ok(workflow.includes('--file "$DOCKERFILE"'))
   assert.ok(workflow.includes('"$BUILD_CONTEXT"'))
+})
+
+test('public build settings preserve literal values without shell evaluation', () => {
+  const args = { PUBLIC_TEBEX_TOKEN: 'public-headless-id', PUBLIC_LABEL: 'a = b $(touch injected)' }
+  const result = validate({ publicBuildArgs: JSON.stringify(args) })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(Buffer.from(result.output['public-build-args-b64'], 'base64')), args)
+  assert.ok(workflow.includes('build_args+=(--build-arg "$argument")'))
+  assert.ok(workflow.includes('"$' + '{build_args[@]}"'))
+})
+
+test('rejects private, malformed, multiline and oversized build inputs', () => {
+  for (const args of [
+    { DISCORD_TOKEN: 'private' }, { PUBLIC_BAD: 'line\nline' }, { PUBLIC_BAD: 'nul\0byte' },
+    { PUBLIC_BAD: 1 }, { PUBLIC_BAD: 'x'.repeat(2049) }, null, [],
+    Object.fromEntries(Array.from({ length: 17 }, (_, i) => ['PUBLIC_KEY_' + i, 'value']))
+  ]) assert.notEqual(validate({ publicBuildArgs: JSON.stringify(args) }).status, 0)
+  assert.notEqual(validate({ publicBuildArgs: '{' }).status, 0)
+  assert.notEqual(validate({ publicBuildArgs: JSON.stringify({ PUBLIC_BAD: 'x'.repeat(16385) }) }).status, 0)
 })

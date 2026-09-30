@@ -21,6 +21,11 @@ on:
         required: false
         default: Dockerfile
         type: string
+      public-build-args:
+        description: JSON object of browser-visible PUBLIC_ build arguments; never pass credentials
+        required: false
+        default: '{}'
+        type: string
       deploy:
         description: Submit the immutable image digest to Hub after publishing
         required: false
@@ -61,6 +66,7 @@ jobs:
           PROJECT: ${{ inputs.project }}
           BUILD_CONTEXT: ${{ inputs.context }}
           DOCKERFILE: ${{ inputs.dockerfile }}
+          PUBLIC_BUILD_ARGS: ${{ inputs.public-build-args }}
         run: |
           node - <<'NODE'
           const fs = require('node:fs')
@@ -79,6 +85,14 @@ jobs:
           const relativeDockerfile = path.relative(context.resolved, dockerfile.resolved)
           if (relativeDockerfile.startsWith('..') || path.isAbsolute(relativeDockerfile)) throw new Error('Dockerfile must be inside the build context')
           if (!fs.existsSync(path.join(context.resolved, '.dockerignore'))) throw new Error('Build context requires .dockerignore')
+          const rawBuildArgs = process.env.PUBLIC_BUILD_ARGS ?? '{}'
+          if (Buffer.byteLength(rawBuildArgs) > 16384) throw new Error('Public build arguments exceed the size limit')
+          const buildArgs = JSON.parse(rawBuildArgs)
+          if (!buildArgs || typeof buildArgs !== 'object' || Array.isArray(buildArgs) || Object.keys(buildArgs).length > 16
+            || Object.entries(buildArgs).some(([name, value]) => !/^PUBLIC_[A-Z][A-Z0-9_]{0,63}$/.test(name)
+              || typeof value !== 'string' || value.length > 2048 || /[\x00-\x1f\x7f]/.test(value))) {
+            throw new Error('Invalid public build arguments')
+          }
           const manifest = JSON.parse(fs.readFileSync('ntanis.project.json', 'utf8'))
           const legacy = manifest.schemaVersion === 1
           const modern = [2, 3].includes(manifest.schemaVersion)
@@ -96,6 +110,7 @@ jobs:
             ? { contractVersion: manifest.realtime.contractVersion, backend: manifest.realtime.backend, channels: manifest.realtime.channels.filter((channel) => channel.component === process.env.COMPONENT) }
             : null
           const output = (name, value) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${Buffer.from(JSON.stringify(value)).toString('base64')}\n`)
+          output('public-build-args-b64', buildArgs)
           output('environment-b64', legacy ? component.environment ?? [] : (manifest.secrets ?? []).filter((entry) => !entry.components || entry.components.includes(process.env.COMPONENT)).map((entry) => ({
             name: entry.name,
             description: entry.purpose,
@@ -135,7 +150,12 @@ jobs:
           IMAGE_REPOSITORY: ${{ steps.contract.outputs.image-repository }}
           BUILD_CONTEXT: ${{ steps.contract.outputs.build-context }}
           DOCKERFILE: ${{ steps.contract.outputs.dockerfile }}
+          PUBLIC_BUILD_ARGS_B64: ${{ steps.contract.outputs.public-build-args-b64 }}
         run: |
+          build_args=()
+          while IFS= read -r argument; do
+            build_args+=(--build-arg "$argument")
+          done < <(printf '%s' "$PUBLIC_BUILD_ARGS_B64" | base64 --decode | jq -r 'to_entries[] | "\(.key)=\(.value)"')
           metadata="$RUNNER_TEMP/image-metadata.json"
           docker buildx build --pull --push --platform linux/amd64 \
             --metadata-file "$metadata" \
@@ -143,6 +163,7 @@ jobs:
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --file "$DOCKERFILE" \
+            "${build_args[@]}" \
             --tag "$IMAGE_REPOSITORY:$GITHUB_SHA" "$BUILD_CONTEXT"
           digest="$(jq -r '."containerimage.digest"' "$metadata")"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]

@@ -40,6 +40,17 @@ Before validation and image construction, it materializes every Git LFS object
 and fails closed if any tracked file remains an unresolved pointer. The legacy
 pnpm-specific Kubernetes workflow enforces the same checkout boundary.
 
+The optional `context` (default `.`) and `dockerfile` (default `Dockerfile`)
+inputs are repository-relative paths. The Dockerfile must be inside the context;
+resolved paths must stay inside the checkout, and the context must include a
+`.dockerignore`. Modern contracts select either `ghcr.io/<owner>/<repo>` or
+`ghcr.io/<owner>/<repo>/<component>`. Component builds have separate concurrency
+keys. Runtime environment requirements include only secrets declared for that
+component (plus unscoped declarations); these are names, never values.
+
+Run `node --test tests/*.test.mjs` to exercise the actual embedded contract
+validator, including path confinement, image ownership, and secret selection.
+
 Callers must pin the reusable workflow to an exact commit:
 
 ```yaml

@@ -39,7 +39,7 @@ jobs:
       - name: Verify Git LFS objects are materialized
         run: |
           git lfs fsck
-          git lfs ls-files --json | jq -e 'all(.files[]; .checkout == true and .downloaded == true)'
+          git lfs ls-files --json | jq -e 'all((.files // [])[]; .checkout == true and .downloaded == true)'
 
       - name: Enforce central supply-chain policy
         uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4

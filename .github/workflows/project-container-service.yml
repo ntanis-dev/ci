@@ -52,7 +52,7 @@ jobs:
       - name: Verify Git LFS objects are materialized
         run: |
           git lfs fsck
-          git lfs ls-files --json | jq -e 'all(.files[]; .checkout == true and .downloaded == true)'
+          git lfs ls-files --json | jq -e 'all((.files // [])[]; .checkout == true and .downloaded == true)'
 
       - id: contract
         name: Validate the bounded Kubernetes contract

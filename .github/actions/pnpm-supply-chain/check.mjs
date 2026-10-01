@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { exactBuildSelector, exactRegistryTarget, exactSelector, exactVersion } from './version-policy.mjs'
+import { exactBuildSelector, exactDependencyVersion, exactRegistryTarget, exactSelector, exactVersion } from './version-policy.mjs'
 
 const root = resolve(process.env.GITHUB_WORKSPACE || process.cwd())
 const failures = []
@@ -20,11 +20,18 @@ const walk = (directory = '') => {
 }
 walk()
 
-for (const path of manifestPaths) {
-  const packageManifest = JSON.parse(read(path))
+const manifests = new Map(manifestPaths.map((path) => [path, JSON.parse(read(path))]))
+const localVersions = new Map()
+for (const [path, manifest] of manifests) {
+  if (!manifest.name) continue
+  if (localVersions.has(manifest.name)) failures.push(`${path}: duplicate local package name ${manifest.name}`)
+  localVersions.set(manifest.name, manifest.version)
+}
+
+for (const [path, packageManifest] of manifests) {
   for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'overrides']) {
     for (const [name, version] of Object.entries(packageManifest[section] ?? {})) {
-      if (!exactVersion.test(version)) failures.push(`${path}: ${section}.${name} must be exact, found ${version}`)
+      if (!(section === 'overrides' ? exactVersion.test(version) : exactDependencyVersion(name, version, localVersions))) failures.push(`${path}: ${section}.${name} must be exact, found ${version}`)
     }
   }
   for (const lifecycle of ['preinstall', 'install', 'postinstall']) {

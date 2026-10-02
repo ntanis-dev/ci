@@ -12,7 +12,7 @@ test('container workflow waits through bounded cold starts and rejects unbounded
   try {
     process.chdir(root);
     fs.writeFileSync('.dockerignore', '.git\n'); fs.writeFileSync('Dockerfile', 'FROM scratch\n');
-    for (const [startup, replicas, expected] of [[150, 2, 114], [3600, 4, 1548], [3601, 4, null], [1, 2, null], [150, 5, null], [150.5, 2, null]]) {
+    for (const [startup, replicas, expected] of [[150, 2, 114], [3600, 4, 1548], [3600, 20, 1860], [3601, 4, null], [1, 2, null], [150, 21, null], [150.5, 2, null]]) {
       fs.writeFileSync('output', '');
       fs.writeFileSync('ntanis.project.json', JSON.stringify({schemaVersion: 3, project: {id: 'example'}, hosting: {components: [{id: 'web', deployment: 'automatic', imageRepository: 'ghcr.io/ntanis-dev/example/web', startupTimeoutSeconds: startup, maxReplicas: replicas}]}}));
       const run = () => vm.runInNewContext(script, {require: (name) => name === 'node:fs' ? fs : path, Buffer,

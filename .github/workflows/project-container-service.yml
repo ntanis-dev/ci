@@ -110,8 +110,8 @@ jobs:
           const startupSeconds = component.startupTimeoutSeconds ?? 150
           const replicas = component.maxReplicas ?? 2
           if (!Number.isInteger(startupSeconds) || startupSeconds < 5 || startupSeconds > 3600
-            || !Number.isInteger(replicas) || replicas < 1 || replicas > 4) throw new Error('Invalid startup health budget')
-          const healthPollCount = Math.ceil((Math.max(480, (startupSeconds + 120) * replicas) + 600) / 10)
+            || !Number.isInteger(replicas) || replicas < 1 || replicas > 20) throw new Error('Invalid startup health budget')
+          const healthPollCount = Math.ceil((Math.min(18000, Math.max(480, (startupSeconds + 120) * replicas)) + 600) / 10)
           fs.appendFileSync(process.env.GITHUB_OUTPUT, 'health-poll-count=' + healthPollCount + '\n')
           const realtime = manifest.realtime
             ? { contractVersion: manifest.realtime.contractVersion, backend: manifest.realtime.backend, channels: manifest.realtime.channels.filter((channel) => channel.component === process.env.COMPONENT) }
@@ -237,7 +237,7 @@ jobs:
           response="$RUNNER_TEMP/hub-deployment-response.json"
           hub_post "https://api.ntanis.dev/v1/deployment-requests/$PROJECT/$COMPONENT" "$payload" "$response"
           request_id="$(jq -er .deploymentRequest.id "$response")"
-          [[ "$HEALTH_POLL_COUNT" =~ ^[0-9]+$ ]] && (( HEALTH_POLL_COUNT >= 108 && HEALTH_POLL_COUNT <= 1548 ))
+          [[ "$HEALTH_POLL_COUNT" =~ ^[0-9]+$ ]] && (( HEALTH_POLL_COUNT >= 108 && HEALTH_POLL_COUNT <= 1860 ))
           for _ in $(seq 1 "$HEALTH_POLL_COUNT"); do
             token="$(oidc_token)"
             status_payload="$(jq -cn --arg commit "$GITHUB_SHA" '{commit:$commit}')"

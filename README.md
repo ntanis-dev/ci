@@ -78,4 +78,4 @@ jobs:
       deploy: ${{ github.ref == 'refs/heads/main' && vars.NTANIS_KUBERNETES_DEPLOY_ENABLED == 'true' }}
 ```
 
-Container deployment status polling uses the contract startup timeout and replica bound plus ten minutes for queueing. The maximum is 258 minutes; omitted startup settings keep a bounded default. Hub remains responsible for health checks, leases and rollback.
+Container deployment status polling uses the contract startup timeout and replica bound plus ten minutes for queueing. The maximum is 310 minutes; omitted startup settings keep a bounded default. Hub remains responsible for health checks, leases and rollback.

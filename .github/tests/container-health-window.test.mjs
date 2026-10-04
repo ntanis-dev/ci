@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-const workflow = fs.readFileSync(new URL('../workflows/project-container-service.yml', import.meta.url), 'utf8');
+const workflow = fs.readFileSync(new URL('../workflows/project-container-service.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const script = workflow.split("node - <<'NODE'\n")[1].split('          NODE')[0].replace(/^          /gm, '');
 test('container workflow waits through bounded cold starts and rejects unbounded inputs', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-health-window-'));

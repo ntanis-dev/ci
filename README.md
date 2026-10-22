@@ -79,3 +79,5 @@ jobs:
 ```
 
 Container deployment status polling uses the contract startup timeout and replica bound plus ten minutes for queueing. The maximum is 310 minutes; omitted startup settings keep a bounded default. Hub remains responsible for health checks, leases and rollback.
+
+When Hub holds a queued deployment because required component-scoped settings are not yet saved and applied, its status carries their names as `missing_environment`. The deploy job then ends successfully with a warning annotation instead of polling: Hub keeps the running build serving and rolls the queued image out by itself once the settings are applied, so no new run is needed. A Hub that does not report the field leaves the job polling as before.

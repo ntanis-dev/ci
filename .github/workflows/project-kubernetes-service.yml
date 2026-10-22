@@ -178,7 +178,16 @@ jobs:
             case "$state" in
               healthy) exit 0 ;;
               failed) printf '%s' "$status" | jq -r '.deploymentRequest.failure_code // "deployment_failed"' >&2; exit 1 ;;
-              queued|deploying) sleep 10 ;;
+              queued|deploying)
+                # Hub keeps a request queued, and the running build serving, until the component's
+                # required settings are saved and applied; it then rolls out by itself. Waiting here
+                # would only time the job out, so report it and end.
+                missing="$(printf '%s' "$status" | jq -r '(.deploymentRequest.missing_environment // []) | join(", ")')"
+                if [[ -n "$missing" ]]; then
+                  echo "::warning title=Deployment held for required settings::Hub keeps this deployment queued until these settings are saved and applied in the project Environment: $missing. It then rolls out by itself; no new run is needed."
+                  exit 0
+                fi
+                sleep 10 ;;
               *) echo 'Hub returned an invalid deployment state.' >&2; exit 1 ;;
             esac
           done

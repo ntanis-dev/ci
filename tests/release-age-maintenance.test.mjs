@@ -91,13 +91,15 @@ test('central validator accepts security-expires metadata and rejects malformed 
   validatorFixture(valid, 'fast-uri@3.1.9')
   const validWorkspace = resolve(valid, 'pnpm-workspace.yaml')
   writeFileSync(validWorkspace, readFileSync(validWorkspace, 'utf8').replace("- 'fast-uri@3.1.9'", "- 'fast-uri@3.1.9' # security-expires: 2026-11-02"))
-  const accepted = spawnSync(process.execPath, [validator], { cwd: valid, encoding: 'utf8' })
+  // The validator reads GITHUB_WORKSPACE before the working directory; on Actions that is the real checkout, not the fixture.
+  const environment = { ...process.env, GITHUB_WORKSPACE: '' }
+  const accepted = spawnSync(process.execPath, [validator], { cwd: valid, encoding: 'utf8', env: environment })
   assert.equal(accepted.status, 0, accepted.stderr)
   const invalid = prepare('validator-invalid')
   validatorFixture(invalid, 'fast-uri@3.1.9')
   const invalidWorkspace = resolve(invalid, 'pnpm-workspace.yaml')
   writeFileSync(invalidWorkspace, readFileSync(invalidWorkspace, 'utf8').replace("- 'fast-uri@3.1.9'", "- 'fast-uri@3.1.9' # security-expires: tomorrow"))
-  const rejected = spawnSync(process.execPath, [validator], { cwd: invalid, encoding: 'utf8' })
+  const rejected = spawnSync(process.execPath, [validator], { cwd: invalid, encoding: 'utf8', env: environment })
   assert.notEqual(rejected.status, 0)
   assert.match(rejected.stderr, /optional security-expires date/)
 })

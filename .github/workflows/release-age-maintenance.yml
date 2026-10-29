@@ -1,0 +1,70 @@
+name: Remove expired release-age exceptions
+
+on:
+  workflow_call:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-age-maintenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the maintained repository
+        uses: actions/checkout@v4
+
+      - name: Check out the central maintenance implementation
+        uses: actions/checkout@v4
+        with:
+          repository: ntanis-dev/ci
+          ref: main
+          path: .maintenance-ci
+
+      - name: Remove expired exception metadata
+        run: node .maintenance-ci/.github/actions/release-age-maintenance/cleanup.mjs
+
+      - name: Verify pnpm policy and frozen installation
+        if: ${{ hashFiles('pnpm-workspace.yaml') != '' }}
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          if grep -R -q 'pnpm-supply-chain' .github/workflows; then
+            node .maintenance-ci/.github/actions/pnpm-supply-chain/check.mjs
+          fi
+
+      - name: Verify uv lock and repository policy
+        if: ${{ hashFiles('pyproject.toml') != '' }}
+        run: |
+          set -euo pipefail
+          python -m pip install uv==0.12.2
+          uv lock
+          python tools/scripts/check_supply_chain.py
+
+      - name: Remove the implementation checkout
+        run: rm -rf .maintenance-ci
+
+      - name: Commit and push metadata-only cleanup
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- pnpm-workspace.yaml pyproject.toml uv.lock; then
+            echo 'No expired exceptions.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- pnpm-workspace.yaml pyproject.toml uv.lock
+          if git diff --cached --quiet; then
+            echo 'No exception metadata changed.'
+            exit 0
+          fi
+          git commit -m 'Drop expired release-age exceptions [skip ci]'
+          git push origin HEAD:main

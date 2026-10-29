@@ -81,3 +81,42 @@ jobs:
 Container deployment status polling uses the contract startup timeout and replica bound plus ten minutes for queueing. The maximum is 310 minutes; omitted startup settings keep a bounded default. Hub remains responsible for health checks, leases and rollback.
 
 When Hub holds a queued deployment because required component-scoped settings are not yet saved and applied, its status carries their names as `missing_environment`. The deploy job then ends successfully with a warning annotation instead of polling: Hub keeps the running build serving and rolls the queued image out by itself once the settings are applied, so no new run is needed. A Hub that does not report the field leaves the job polling as before.
+
+## Self-expiring release-age exceptions
+
+`release-age-maintenance.yml` removes expired security exceptions without changing the patched dependency versions. It runs weekly and can also be called manually. Each participating repository invokes the reusable workflow itself, so cleanup uses that repository's own `contents: write` token and needs no cross-repository credentials.
+
+For pnpm, add an expiry date to each new `minimumReleaseAgeExclude` entry:
+
+```yaml
+minimumReleaseAgeExclude:
+  - 'fast-uri@3.1.9' # security-expires: 2026-11-02
+```
+
+For uv, keep expiry metadata immediately above the inline exception table:
+
+```toml
+# security-expires: certifi=2026-11-03, filelock=2026-10-31
+exclude-newer-package = { certifi = "2026-10-20T03:00:00Z", filelock = "2026-10-17T17:00:00Z" }
+```
+
+The cleanup removes only expired entries. Undated legacy entries remain unchanged. An empty pnpm list becomes `minimumReleaseAgeExclude: []`; an empty uv table and its metadata are removed. Removing a uv exception also advances the global `exclude-newer` cutoff to the exception's timestamp when that is newer, so the ordinary cooldown covers the patched package. No package is downgraded and no override is removed.
+
+Before any commit, the workflow runs the frozen pnpm install, the shared supply-chain validator when configured, `uv lock`, and the repository's Python policy check. It stages only `pnpm-workspace.yaml`, `pyproject.toml`, and `uv.lock`, then pushes a metadata-only commit with `[skip ci]`. Failed verification produces no commit.
+
+Install one static caller per participating repository and pin it to an exact central CI commit:
+
+```yaml
+name: Maintain release-age exceptions
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    uses: ntanis-dev/ci/.github/workflows/release-age-maintenance.yml@<exact-commit>
+```
+
+The reusable workflow's own Monday 05:17 UTC schedule supplies the recurring run. Routine dependency updates remain with Renovate; major upgrades and overrides outside a parent's accepted range stay manual.
+
+Run `node --test tests/release-age-maintenance.test.mjs` to exercise expiry handling, empty-list cleanup, uv cutoff advancement, malformed metadata, and validator compatibility.

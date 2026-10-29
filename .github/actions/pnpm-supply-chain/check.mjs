@@ -75,8 +75,8 @@ for (const line of allowBuilds.split(/\r?\n/)) {
 const exclusions = pnpmWorkspace.match(/^minimumReleaseAgeExclude:\s*$([\s\S]*?)(?=^\S|(?![\s\S]))/m)?.[1] ?? ''
 for (const line of exclusions.split(/\r?\n/)) {
   if (!line.trim() || line.trimStart().startsWith('#')) continue
-  const match = /^  - '([^']+)'$/.exec(line)
-  if (!match || !exactSelector(match[1])) failures.push(`pnpm-workspace.yaml: release-age exception must be exact, found ${line.trim()}`)
+  const match = /^  - '([^']+)'(?: # security-expires: \d{4}-\d{2}-\d{2})?$/.exec(line)
+  if (!match || !exactSelector(match[1])) failures.push(`pnpm-workspace.yaml: release-age exception must be exact with an optional security-expires date, found ${line.trim()}`)
   else if (!lockfile.includes(`  '${match[1]}':`) && !lockfile.includes(`  ${match[1]}:`)) failures.push(`pnpm-workspace.yaml: stale release-age exception ${match[1]}`)
 }
 

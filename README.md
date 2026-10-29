@@ -82,6 +82,12 @@ Container deployment status polling uses the contract startup timeout and replic
 
 When Hub holds a queued deployment because required component-scoped settings are not yet saved and applied, its status carries their names as `missing_environment`. The deploy job then ends successfully with a warning annotation instead of polling: Hub keeps the running build serving and rolls the queued image out by itself once the settings are applied, so no new run is needed. A Hub that does not report the field leaves the job polling as before.
 
+## Pinning and the Hub
+
+Hub authenticates the workflows that talk to it (`register-project.yml`, `project-candidate.yml`, `project-kubernetes-service.yml`, `project-container-service.yml`, `report-hosted-deployment.yml`, `ghcr-retention.yml`) by their GitHub OIDC `job_workflow_ref`. It accepts a call only when the workflow file is one it expects for that purpose and the pinned commit is reachable from this repository's `main`. There is no list of commits to update: merge a change to `main`, then callers pin its commit. A branch or tag reference, or a commit that is not on `main`, is refused.
+
+Because that makes `main` the source of deploy authority, it is protected against force pushes and deletion, including for administrators. Rewriting its history means lifting that protection first, and every caller that pins a commit which then disappears from `main` stops deploying until it is re-pinned.
+
 ## Job timeouts
 
 Every job in these workflows sets `timeout-minutes`, so a stuck job cannot run for GitHub's default six hours. Each reusable workflow takes its timeout as an optional input; callers do not need to pass it unless a project is slower than usual.

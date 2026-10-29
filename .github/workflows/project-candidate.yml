@@ -15,10 +15,16 @@ on:
         description: JSON matrix with os, script, artifactDirectory, includeExtensions, includeFiles, platform, architecture, platformSigned and explicit install boolean
         required: true
         type: string
+      timeout-minutes:
+        description: Timeout for each build and for the final upload; builds take up to about 7 minutes and uploads up to about 14
+        required: false
+        default: 30
+        type: number
 
 jobs:
   metadata:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     outputs:
@@ -57,6 +63,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.build-matrix) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -91,6 +98,7 @@ jobs:
     permissions:
       id-token: write
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Finalize complete immutable candidate
         uses: ntanis-dev/ci/.github/actions/finalize-candidate@93312b0f924457454e0b37e6e633b8997bcc1937

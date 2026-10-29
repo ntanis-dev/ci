@@ -13,6 +13,16 @@ on:
         required: false
         default: false
         type: boolean
+      timeout-minutes:
+        description: Build timeout; checks, tests and the image usually take under 8 minutes
+        required: false
+        default: 20
+        type: number
+      deploy-timeout-minutes:
+        description: Deploy timeout; the health gate waits up to about 10 minutes and a rollout usually takes under 9
+        required: false
+        default: 25
+        type: number
 
 concurrency:
   group: ntanis-kubernetes-${{ inputs.project }}-${{ github.ref }}
@@ -21,6 +31,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       packages: write
@@ -127,6 +138,7 @@ jobs:
     if: inputs.deploy
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.deploy-timeout-minutes }}
     environment: production
     permissions:
       contents: read

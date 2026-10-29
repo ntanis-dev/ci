@@ -21,6 +21,11 @@ on:
         required: false
         default: build
         type: string
+      timeout-minutes:
+        description: Job timeout; validation usually takes under 2 minutes
+        required: false
+        default: 15
+        type: number
 
 permissions:
   contents: read
@@ -28,6 +33,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@f8b4a4d53f59866e8b06200c6cd930938a8dc5b4

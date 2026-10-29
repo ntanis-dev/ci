@@ -82,6 +82,20 @@ Container deployment status polling uses the contract startup timeout and replic
 
 When Hub holds a queued deployment because required component-scoped settings are not yet saved and applied, its status carries their names as `missing_environment`. The deploy job then ends successfully with a warning annotation instead of polling: Hub keeps the running build serving and rolls the queued image out by itself once the settings are applied, so no new run is needed. A Hub that does not report the field leaves the job polling as before.
 
+## Job timeouts
+
+Every job in these workflows sets `timeout-minutes`, so a stuck job cannot run for GitHub's default six hours. Each reusable workflow takes its timeout as an optional input; callers do not need to pass it unless a project is slower than usual.
+
+| Workflow | Input | Default | Usual run |
+| --- | --- | --- | --- |
+| `project-validate.yml` | `timeout-minutes` | 15 | under 2 minutes |
+| `project-candidate.yml` | `timeout-minutes` (each build and the final upload) | 30 | builds up to 7, upload up to 14 |
+| `project-kubernetes-service.yml` | `timeout-minutes` (build), `deploy-timeout-minutes` | 20, 25 | build under 8, deploy under 9 |
+| `project-container-service.yml` | `timeout-minutes` (build) | 20 | under 5 |
+| `register-project.yml`, `report-hosted-deployment.yml`, `ghcr-retention.yml` | `timeout-minutes` | 10 | seconds to a minute |
+
+The container deploy job has no input: its timeout is computed from the same startup budget as its health polling (15 seconds per poll, plus ten minutes, never more than six hours), so a slow but healthy cold start is never cut short. `tests/workflow-timeouts.test.mjs` fails if a job loses its timeout or the deploy timeout stops covering the poll budget.
+
 ## Self-expiring release-age exceptions
 
 `release-age-maintenance.yml` removes expired security exceptions without changing the patched dependency versions. It runs weekly and can also be called manually. Each participating repository invokes the reusable workflow itself, so cleanup uses that repository's own `contents: write` token and needs no cross-repository credentials.

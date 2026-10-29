@@ -2,6 +2,12 @@ name: Register project contract
 
 on:
   workflow_call:
+    inputs:
+      timeout-minutes:
+        description: Job timeout; registration usually takes seconds
+        required: false
+        default: 10
+        type: number
 
 permissions:
   contents: read
@@ -9,6 +15,7 @@ permissions:
 jobs:
   register:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       id-token: write

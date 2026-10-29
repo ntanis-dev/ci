@@ -18,6 +18,11 @@ on:
         required: false
         default: 7
         type: number
+      timeout-minutes:
+        description: Job timeout; retention usually takes under a minute
+        required: false
+        default: 10
+        type: number
 
 permissions:
   contents: read
@@ -27,6 +32,7 @@ permissions:
 jobs:
   retention:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Authenticate to GHCR
         env:

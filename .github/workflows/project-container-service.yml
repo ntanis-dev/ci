@@ -31,6 +31,11 @@ on:
         required: false
         default: false
         type: boolean
+      timeout-minutes:
+        description: Build timeout; the checks and the image usually take under 5 minutes. The deploy timeout follows the component's own startup budget.
+        required: false
+        default: 20
+        type: number
 
 concurrency:
   group: ntanis-container-${{ inputs.project }}-${{ inputs.component }}-${{ github.ref }}
@@ -39,11 +44,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
       packages: write
     outputs:
       health-poll-count: ${{ steps.contract.outputs.health-poll-count }}
+      deploy-timeout-minutes: ${{ steps.contract.outputs.deploy-timeout-minutes }}
       image-digest: ${{ steps.image.outputs.digest }}
       image-repository: ${{ steps.contract.outputs.image-repository }}
       environment-b64: ${{ steps.contract.outputs.environment-b64 }}
@@ -113,6 +120,9 @@ jobs:
             || !Number.isInteger(replicas) || replicas < 1 || replicas > 20) throw new Error('Invalid startup health budget')
           const healthPollCount = Math.ceil((Math.min(18000, Math.max(480, (startupSeconds + 120) * replicas)) + 600) / 10)
           fs.appendFileSync(process.env.GITHUB_OUTPUT, 'health-poll-count=' + healthPollCount + '\n')
+          // The deploy job waits at most this many polls of about 10 seconds (up to 15 with a slow reply), so its
+          // timeout follows the same startup budget, with a margin, and never exceeds the 6 hour limit of a job.
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'deploy-timeout-minutes=' + Math.min(360, Math.ceil(healthPollCount * 15 / 60) + 10) + '\n')
           const realtime = manifest.realtime
             ? { contractVersion: manifest.realtime.contractVersion, backend: manifest.realtime.backend, channels: manifest.realtime.channels.filter((channel) => channel.component === process.env.COMPONENT) }
             : null
@@ -181,6 +191,7 @@ jobs:
     if: inputs.deploy
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(needs.build.outputs.deploy-timeout-minutes) }}
     environment: production
     permissions:
       contents: read

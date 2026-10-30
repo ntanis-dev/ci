@@ -33,6 +33,11 @@ on:
         required: false
         default: 'null'
         type: string
+      timeout-minutes:
+        description: Job timeout; a report usually takes seconds
+        required: false
+        default: 10
+        type: number
 
 permissions:
   contents: read
@@ -41,6 +46,7 @@ permissions:
 jobs:
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - name: Validate report envelope
         env:

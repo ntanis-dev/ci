@@ -42,7 +42,7 @@ for (const [path, packageManifest] of manifests) {
 const manifest = JSON.parse(read('package.json'))
 if (manifest.packageManager !== 'pnpm@11.15.1') failures.push('package.json: packageManager must pin pnpm@11.15.1')
 for (const path of competingLockfiles) failures.push(`${path}: competing lockfiles are not allowed`)
-for (const path of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', 'renovate.json', 'SECURITY.md', '.github/CODEOWNERS', '.github/workflows/osv-scanner.yml']) {
+for (const path of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', 'SECURITY.md', '.github/CODEOWNERS', '.github/workflows/osv-scanner.yml']) {
   if (!existsSync(resolve(root, path))) failures.push(`${path}: required supply-chain control is missing`)
 }
 

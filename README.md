@@ -137,6 +137,6 @@ jobs:
     uses: ntanis-dev/ci/.github/workflows/release-age-maintenance.yml@<exact-commit>
 ```
 
-The reusable workflow's own Monday 05:17 UTC schedule supplies the recurring run. Routine dependency updates remain with Renovate; major upgrades and overrides outside a parent's accepted range stay manual.
+The reusable workflow's own Monday 05:17 UTC schedule supplies the recurring run. This workflow only removes expired exceptions; dependency updates, major upgrades and overrides outside a parent's accepted range are made by hand.
 
 Run `node --test tests/release-age-maintenance.test.mjs` to exercise expiry handling, empty-list cleanup, uv cutoff advancement, malformed metadata, and validator compatibility.

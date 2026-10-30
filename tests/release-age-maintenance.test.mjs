@@ -80,7 +80,6 @@ const validatorFixture = (directory, exclusion) => {
   write(directory, 'pnpm-lock.yaml', `lockfileVersion: '9.0'\npackages:\n  '${exclusion}':\n    resolution: {}\n`)
   write(directory, 'pnpm-workspace.yaml', `minimumReleaseAge: 20160\nminimumReleaseAgeIgnoreMissingTime: false\nminimumReleaseAgeStrict: true\ntrustLockfile: false\nblockExoticSubdeps: true\nsaveExact: true\nstrictDepBuilds: true\nverifyDepsBeforeRun: error\nminimumReleaseAgeExclude:\n  - '${exclusion}'\n`)
   write(directory, '.npmrc', 'ignore-scripts=true\nsave-exact=true\n')
-  write(directory, 'renovate.json', '{}\n')
   write(directory, 'SECURITY.md', '# Security\n')
   write(directory, '.github/CODEOWNERS', '* @ntanis-dev\n')
   write(directory, '.github/workflows/osv-scanner.yml', 'on:\n  schedule:\n    - cron: "17 5 * * 1"\njobs:\n  scan:\n    steps:\n      - run: echo "fail-on-vuln: true"\n')
@@ -102,6 +101,24 @@ test('central validator accepts security-expires metadata and rejects malformed 
   const rejected = spawnSync(process.execPath, [validator], { cwd: invalid, encoding: 'utf8', env: environment })
   assert.notEqual(rejected.status, 0)
   assert.match(rejected.stderr, /optional security-expires date/)
+})
+
+test('central validator does not require a Renovate file but still requires every other control', () => {
+  const environment = { ...process.env, GITHUB_WORKSPACE: '' }
+  const check = (directory) => spawnSync(process.execPath, [validator], { cwd: directory, encoding: 'utf8', env: environment })
+  const complete = prepare('validator-no-renovate')
+  validatorFixture(complete, 'fast-uri@3.1.9')
+  assert.equal(check(complete).status, 0, check(complete).stderr)
+  // The validator reads .npmrc and the OSV workflow right after this list, so only the controls it merely checks for
+  // existence are reported by name.
+  for (const control of ['SECURITY.md', '.github/CODEOWNERS']) {
+    const directory = prepare(`validator-missing-${control.replace(/[^a-z]/gi, '-')}`)
+    validatorFixture(directory, 'fast-uri@3.1.9')
+    rmSync(resolve(directory, control))
+    const result = check(directory)
+    assert.notEqual(result.status, 0, control)
+    assert.match(result.stderr, new RegExp(`${control.replace(/[.]/g, '\\.')}: required supply-chain control is missing`), control)
+  }
 })
 
 test('workflow is repository-local, bounded and stages only exception files', () => {

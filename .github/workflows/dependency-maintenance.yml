@@ -68,14 +68,14 @@ jobs:
           node-version: 24
       - name: Scan before maintenance
         if: steps.policy.outputs.pnpm == 'true'
-        uses: ntanis-dev/ci/.github/actions/dependency-gate@45a30757547b1cbcd0ed02f0c8fd227c88585394
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@76302f7914a613c2a3e4ad2cc9073f70ba7b3dcb
         with:
           fail-severity: none
           exclude: ${{ inputs.exclude }}
           result-file: ${{ runner.temp }}/before.json
       - name: Apply mature fixes and drop matured exceptions
         if: steps.policy.outputs.pnpm == 'true'
-        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@45a30757547b1cbcd0ed02f0c8fd227c88585394
+        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@76302f7914a613c2a3e4ad2cc9073f70ba7b3dcb
         with:
           mode: apply
           before-result: ${{ runner.temp }}/before.json
@@ -84,14 +84,14 @@ jobs:
           build-script: ${{ inputs.build-script }}
       - name: Scan after maintenance
         if: steps.policy.outputs.pnpm == 'true'
-        uses: ntanis-dev/ci/.github/actions/dependency-gate@45a30757547b1cbcd0ed02f0c8fd227c88585394
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@76302f7914a613c2a3e4ad2cc9073f70ba7b3dcb
         with:
           fail-severity: none
           exclude: ${{ inputs.exclude }}
           result-file: ${{ runner.temp }}/after.json
       - name: Commit and push to main
         if: steps.policy.outputs.pnpm == 'true'
-        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@45a30757547b1cbcd0ed02f0c8fd227c88585394
+        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@76302f7914a613c2a3e4ad2cc9073f70ba7b3dcb
         with:
           mode: commit
           after-result: ${{ runner.temp }}/after.json

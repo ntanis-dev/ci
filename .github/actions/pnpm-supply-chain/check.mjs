@@ -94,7 +94,8 @@ for (const filename of readdirSync(resolve(root, '.github', 'workflows'))) {
 
 const osv = read('.github/workflows/osv-scanner.yml')
 if (!/\bschedule:\s*[\r\n]+\s*-\s*cron:/m.test(osv)) failures.push('OSV must run on a schedule')
-if (!osv.includes('fail-on-vuln: true') && !osv.includes('--fail-on-vuln=true')) failures.push('OSV must fail closed')
+const centralScan = /^\s*uses:\s*ntanis-dev\/ci\/\.github\/workflows\/dependency-scan\.yml@[0-9a-f]{40}\s*$/m.test(osv)
+if (!centralScan && !osv.includes('fail-on-vuln: true') && !osv.includes('--fail-on-vuln=true')) failures.push('OSV must fail closed (call the central dependency-scan.yml)')
 
 if (failures.length) {
   console.error(failures.join('\n'))

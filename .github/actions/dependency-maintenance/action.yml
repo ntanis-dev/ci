@@ -1,0 +1,98 @@
+name: Maintain pnpm dependencies
+description: Applies mature in-range fixes and drops matured release-age exceptions (mode apply), then commits and pushes the verified result to main (mode commit). It never adds an exception or an override.
+inputs:
+  mode:
+    description: apply or commit
+    required: true
+  before-result:
+    description: Dependency gate result from before maintenance (apply)
+    required: false
+    default: ''
+  after-result:
+    description: Dependency gate result from after maintenance (commit)
+    required: false
+    default: ''
+  report-file:
+    description: JSON report of what maintenance changed
+    required: true
+  check-script:
+    description: Optional package script used for static verification
+    required: false
+    default: ''
+  build-script:
+    description: Optional package script used for the ordinary build
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Drop release-age exceptions that have matured
+      if: inputs.mode == 'apply'
+      shell: bash
+      env:
+        REPORT: ${{ inputs.report-file }}
+      run: node "$GITHUB_ACTION_PATH/maintenance.mjs" exemptions --root . --report "$REPORT"
+    - name: Update packages whose mature fix is not applied
+      if: inputs.mode == 'apply'
+      shell: bash
+      env:
+        BEFORE: ${{ inputs.before-result }}
+        REPORT: ${{ inputs.report-file }}
+      run: |
+        set -euo pipefail
+        packages="$(node "$GITHUB_ACTION_PATH/maintenance.mjs" packages --result "$BEFORE" --report "$REPORT")"
+        if [ -n "$packages" ]; then
+          echo "Updating within declared ranges: $packages"
+          # Names are validated by maintenance.mjs; word splitting passes one argument per package.
+          pnpm update -r $packages
+        fi
+    - name: Verify the locked dependency graph and the supply-chain policy
+      if: inputs.mode == 'apply'
+      shell: bash
+      run: |
+        set -euo pipefail
+        pnpm install --frozen-lockfile
+        if grep -Rqs 'pnpm-supply-chain' .github/workflows; then node "$GITHUB_ACTION_PATH/../pnpm-supply-chain/check.mjs"; fi
+    - name: Regenerate the third-party notices
+      if: inputs.mode == 'apply'
+      shell: bash
+      env:
+        REPORT: ${{ inputs.report-file }}
+      run: |
+        set -euo pipefail
+        if ! git diff --quiet -- pnpm-lock.yaml && [ -f scripts/generate-third-party-notices.mjs ]; then
+          node scripts/generate-third-party-notices.mjs
+          node "$GITHUB_ACTION_PATH/maintenance.mjs" notices --report "$REPORT"
+        fi
+    - name: Run the repository checks
+      if: inputs.mode == 'apply'
+      shell: bash
+      env:
+        CHECK_SCRIPT: ${{ inputs.check-script }}
+        BUILD_SCRIPT: ${{ inputs.build-script }}
+      run: |
+        set -euo pipefail
+        [[ -z "$CHECK_SCRIPT" || "$CHECK_SCRIPT" =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || exit 2
+        [[ -z "$BUILD_SCRIPT" || "$BUILD_SCRIPT" =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || exit 2
+        if git diff --quiet; then echo 'Nothing changed; checks skipped.'; exit 0; fi
+        if [ -n "$CHECK_SCRIPT" ]; then pnpm run "$CHECK_SCRIPT"; fi
+        if [ -n "$BUILD_SCRIPT" ]; then pnpm run "$BUILD_SCRIPT"; fi
+    - name: Commit and push to main
+      if: inputs.mode == 'commit'
+      shell: bash
+      env:
+        REPORT: ${{ inputs.report-file }}
+        AFTER: ${{ inputs.after-result }}
+      run: |
+        set -euo pipefail
+        git add -u -- ':(glob)**/pnpm-workspace.yaml' ':(glob)**/pnpm-lock.yaml' ':(glob)**/THIRD-PARTY-NOTICES*'
+        if git diff --cached --quiet; then
+          echo 'Nothing to commit.' | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        node "$GITHUB_ACTION_PATH/maintenance.mjs" message --report "$REPORT" --after "$AFTER" > "$RUNNER_TEMP/message.txt"
+        git commit -q -F "$RUNNER_TEMP/message.txt"
+        git push origin HEAD:main
+        { echo '## Dependency maintenance'; echo; cat "$RUNNER_TEMP/message.txt"; } >> "$GITHUB_STEP_SUMMARY"

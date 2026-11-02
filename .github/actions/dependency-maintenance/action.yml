@@ -40,6 +40,10 @@ runs:
         REPORT: ${{ inputs.report-file }}
       run: |
         set -euo pipefail
+        if [ -n "$(node "$GITHUB_ACTION_PATH/maintenance.mjs" overrides --result "$BEFORE" --root . --report "$REPORT")" ]; then
+          echo 'Moved overrides that pinned a vulnerable version to its mature fix.'
+          pnpm install --no-frozen-lockfile
+        fi
         packages="$(node "$GITHUB_ACTION_PATH/maintenance.mjs" packages --result "$BEFORE" --report "$REPORT")"
         if [ -n "$packages" ]; then
           echo "Updating within declared ranges: $packages"

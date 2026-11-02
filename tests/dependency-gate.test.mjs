@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { classify, compareVersions, fixFor, meetsThreshold, summarize } from '../.github/actions/dependency-gate/gate.mjs'
-import { commitMessage, dropMaturedExemptions, packagesToUpdate } from '../.github/actions/dependency-maintenance/maintenance.mjs'
+import { commitMessage, dropMaturedExemptions, packagesToUpdate, retargetOverrides } from '../.github/actions/dependency-maintenance/maintenance.mjs'
 
 const now = new Date('2026-11-02T12:00:00Z')
 const days = (count) => new Date(now.getTime() - count * 864e5)
@@ -103,6 +103,30 @@ test('maintenance updates only npm packages in pnpm lockfiles whose mature fix i
     { status: 'action', ecosystem: 'Go', package: 'golang.org/x/net', source: 'go.mod' },
   ] }
   assert.deepEqual(packagesToUpdate(result), ['@hono/node-server', 'qs'])
+})
+
+test('an override pinning the vulnerable version moves to the mature fix of the same major only', () => {
+  const source = [
+    'overrides:',
+    '  # Patched versions for the dependency advisories reported by OSV.',
+    "  fast-uri: '3.1.8'",
+    "  'qs@6.15.3': '6.16.0'",
+    '  zod: 4.6.6',
+    "  minimatch: '10.2.6'",
+    'minimumReleaseAge: 20160',
+  ].join('\n')
+  const result = { findings: [
+    { status: 'action', ecosystem: 'npm', package: 'fast-uri', version: '3.1.8', fix: '3.1.9' },
+    { status: 'action', ecosystem: 'npm', package: 'qs', version: '6.16.0', fix: '6.16.1' },
+    { status: 'action', ecosystem: 'npm', package: 'minimatch', version: '10.2.6', fix: '11.0.1' },
+    { status: 'waiting', ecosystem: 'npm', package: 'zod', version: '4.6.6', fix: '4.6.7' },
+  ] }
+  const changed = retargetOverrides(source, result)
+  assert.deepEqual(changed.retargeted.map((item) => `${item.override} ${item.from}->${item.to}`), ['fast-uri 3.1.8->3.1.9', 'qs@6.15.3 6.16.0->6.16.1'])
+  assert.match(changed.source, /^  fast-uri: '3\.1\.9'$/m)
+  assert.match(changed.source, /^  'qs@6\.15\.3': '6\.16\.1'$/m)
+  assert.match(changed.source, /^  minimatch: '10\.2\.6'$/m)
+  assert.match(changed.source, /^  zod: 4\.6\.6$/m)
 })
 
 test('the maintenance commit message says what changed and what is still open', () => {

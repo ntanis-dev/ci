@@ -1,6 +1,7 @@
 // Weekly dependency maintenance helpers. Every change stays inside the two-week release age: matured exceptions are
 // dropped, and packages are updated only through pnpm, whose own minimumReleaseAge decides what may enter the lockfile.
 //   exemptions --root <dir> --report <file>    drop minimumReleaseAgeExclude entries that are two weeks old
+//   overrides --result <scan.json> --root <dir> --report <file>  move overrides that pin a vulnerable version
 //   packages --result <scan.json> --report <file>  print the npm packages whose mature fix is not applied
 //   message --report <file> --after <scan.json>    print the commit message for what changed
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -68,6 +69,28 @@ export async function dropMaturedExemptions(source, { now = new Date(), publishe
   return { source: [...head, ...block, ...lines.slice(end)].join(eol), removed }
 }
 
+// An existing override that pins the vulnerable version moves to the mature fix of the same major, since pnpm update
+// cannot move past it. Overrides are never added, and a fix in another major is left for a decision.
+export function retargetOverrides(source, result) {
+  const eol = source.includes('\r\n') ? '\r\n' : '\n'
+  const lines = source.split(/\r?\n/)
+  const start = lines.findIndex((line) => /^overrides:\s*$/.test(line))
+  const retargeted = []
+  if (start < 0) return { source, retargeted }
+  const fixes = (result?.findings ?? []).filter((item) => item.status === 'action' && item.fix && String(item.ecosystem).split(':')[0] === 'npm')
+  for (let index = start + 1; index < lines.length && (lines[index] === '' || /^\s/.test(lines[index])); index += 1) {
+    const match = /^(\s+)('?)([^':\s][^':]*?)\2:\s*('?)([^'\s#]+)\4(\s*(?:#.*)?)$/.exec(lines[index])
+    if (!match) continue
+    const [, indent, keyQuote, key, valueQuote, target, rest] = match
+    const name = key.lastIndexOf('@') > 0 ? key.slice(0, key.lastIndexOf('@')) : key
+    const finding = fixes.find((item) => item.package === name && item.version === target)
+    if (!finding || finding.fix.replace(/^v/, '').split('.')[0] !== target.split('.')[0]) continue
+    lines[index] = `${indent}${keyQuote}${key}${keyQuote}: ${valueQuote}${finding.fix}${valueQuote}${rest}`
+    retargeted.push({ override: key, from: target, to: finding.fix, package: name })
+  }
+  return { source: lines.join(eol), retargeted }
+}
+
 export function packagesToUpdate(result) {
   const names = new Set()
   for (const finding of result?.findings ?? []) {
@@ -80,6 +103,7 @@ export function packagesToUpdate(result) {
 
 export function commitMessage(report, after) {
   const lines = []
+  if (report.retargeted?.length) lines.push(`- Move ${report.retargeted.map((item) => `the ${item.override} override from ${item.from} to ${item.to}`).join(', ')}: the overridden version has an advisory and the fix is two weeks old.`)
   if (report.updated?.length) lines.push(`- Update ${report.updated.join(', ')} to the newest releases their declared ranges allow that are two weeks old, which carry the fixes the dependency scan reported.`)
   if (report.removed?.length) lines.push(`- Drop the release-age exceptions that are now two weeks old: ${report.removed.join(', ')}. The frozen install accepts them without one.`)
   if (report.notices) lines.push('- Regenerate the third-party notices for the new lockfile.')
@@ -105,8 +129,15 @@ async function main() {
     if (result.removed.length) writeFileSync(path, result.source)
     report.removed = result.removed
     console.log(result.removed.length ? `Dropped matured release-age exceptions: ${result.removed.join(', ')}` : 'No release-age exception has matured.')
+  } else if (command === 'overrides') {
+    const path = resolve(option('--root', '.'), 'pnpm-workspace.yaml')
+    const result = retargetOverrides(readFileSync(path, 'utf8'), readJson(option('--result'), {}))
+    if (result.retargeted.length) writeFileSync(path, result.source)
+    report.retargeted = result.retargeted
+    process.stdout.write(result.retargeted.length ? 'changed' : '')
   } else if (command === 'packages') {
-    report.updated = packagesToUpdate(readJson(option('--result'), {}))
+    const retargeted = new Set((report.retargeted ?? []).map((item) => item.package))
+    report.updated = packagesToUpdate(readJson(option('--result'), {})).filter((name) => !retargeted.has(name))
     process.stdout.write(report.updated.join(' '))
   } else if (command === 'notices') {
     report.notices = true

@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: 24
       - name: Gate dependency advisories
-        uses: ntanis-dev/ci/.github/actions/dependency-gate@de964c7c92f6e13567f60668a39e9ec94f45115f
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@45a30757547b1cbcd0ed02f0c8fd227c88585394
         with:
           exclude: ${{ inputs.exclude }}
           result-file: ${{ runner.temp }}/dependency-scan.json

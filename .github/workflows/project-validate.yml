@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@de964c7c92f6e13567f60668a39e9ec94f45115f
+      - uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@45a30757547b1cbcd0ed02f0c8fd227c88585394
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -134,7 +134,7 @@ jobs:
           pnpm install --frozen-lockfile
           npm audit signatures
       - name: Gate dependency advisories
-        uses: ntanis-dev/ci/.github/actions/dependency-gate@de964c7c92f6e13567f60668a39e9ec94f45115f
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@45a30757547b1cbcd0ed02f0c8fd227c88585394
         with:
           fail-severity: high
           result-file: ${{ runner.temp }}/dependency-scan.json

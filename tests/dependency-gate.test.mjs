@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { classify, compareVersions, fixFor, meetsThreshold, summarize } from '../.github/actions/dependency-gate/gate.mjs'
+import { classify, compareVersions, fixFor, meetsThreshold, registryPublishedAt, summarize } from '../.github/actions/dependency-gate/gate.mjs'
 import { commitMessage, dropMaturedExemptions, packagesToUpdate, retargetOverrides } from '../.github/actions/dependency-maintenance/maintenance.mjs'
 
 const now = new Date('2026-11-02T12:00:00Z')
@@ -42,6 +42,17 @@ test('a fix younger than two weeks waits with its landing date, a mature one nee
   assert.equal(action.status, 'action')
   const [unknown] = await classify(scan(vulnerability('GHSA-aaaa-aaaa-aaaa', '1.2.4')), { now, root: '/work/repo', publishedAt: published({}) })
   assert.equal(unknown.status, 'action', 'an unknown release date fails closed')
+})
+
+test('Go standard library fixes are dated by their toolchain release', async () => {
+  const urls = []
+  const request = async (url) => {
+    urls.push(url)
+    return { ok: true, json: async () => ({ Time: '2026-10-19T22:20:36Z' }) }
+  }
+  const date = await registryPublishedAt('Go', 'stdlib', '1.26.10', request)
+  assert.equal(date.toISOString(), '2026-10-19T22:20:36.000Z')
+  assert.deepEqual(urls, ['https://proxy.golang.org/golang.org/toolchain/@v/v0.0.1-go1.26.10.linux-amd64.info'])
 })
 
 test('accepted advisories pass until they expire, and a missing fix needs a decision', async () => {

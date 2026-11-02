@@ -85,6 +85,8 @@ async function lookupPublishedAt(ecosystem, name, version, request) {
   const base = String(ecosystem).split(':')[0]
   let time
   if (base === 'npm') time = (await json(`https://registry.npmjs.org/${name.replace('/', '%2f')}`)).time?.[version]
+  // The go directive and toolchain line are reported as stdlib/toolchain; their releases are toolchain modules.
+  else if (base === 'Go' && ['stdlib', 'toolchain'].includes(name)) time = (await json(`https://proxy.golang.org/golang.org/toolchain/@v/v0.0.1-go${version.replace(/^v/, '')}.linux-amd64.info`)).Time
   else if (base === 'Go') time = (await json(`https://proxy.golang.org/${goEscape(name)}/@v/${version.startsWith('v') ? version : `v${version}`}.info`)).Time
   else if (base === 'PyPI') time = (await json(`https://pypi.org/pypi/${encodeURIComponent(name)}/${encodeURIComponent(version)}/json`)).urls?.[0]?.upload_time_iso_8601
   else if (base === 'crates.io') time = (await json(`https://crates.io/api/v1/crates/${encodeURIComponent(name)}/${encodeURIComponent(version)}`)).version?.created_at

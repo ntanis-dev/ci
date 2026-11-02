@@ -89,7 +89,8 @@ runs:
         AFTER: ${{ inputs.after-result }}
       run: |
         set -euo pipefail
-        git add -u -- ':(glob)**/pnpm-workspace.yaml' ':(glob)**/pnpm-lock.yaml' ':(glob)**/THIRD-PARTY-NOTICES*'
+        # git add fails on a pathspec that matches nothing, and most repositories have no notices file.
+        git ls-files -z -- ':(glob)**/pnpm-workspace.yaml' ':(glob)**/pnpm-lock.yaml' ':(glob)**/THIRD-PARTY-NOTICES*' | xargs -0 -r git add -u --
         if git diff --cached --quiet; then
           echo 'Nothing to commit.' | tee -a "$GITHUB_STEP_SUMMARY"
           exit 0

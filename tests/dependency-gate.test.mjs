@@ -98,6 +98,13 @@ test('maintenance drops matured exceptions with their comments and keeps young o
   assert.equal(result.source, ['minimumReleaseAge: 20160', '# Exact security releases; remove these exceptions once they are 14 days old.', 'minimumReleaseAgeExclude:', "  - 'young@2.0.0'", 'trustLockfile: false', ''].join('\r\n'))
 })
 
+test('maintenance also drops unquoted exceptions', async () => {
+  const source = "minimumReleaseAgeExclude:\n  - fast-uri@3.1.9\n  - '@scope/young@2.0.0'\nworkspaceConcurrency: 1\n"
+  const result = await dropMaturedExemptions(source, { now, publishedAt: published({ '3.1.9': days(15), '2.0.0': days(1) }) })
+  assert.deepEqual(result.removed, ['fast-uri@3.1.9'])
+  assert.equal(result.source, "minimumReleaseAgeExclude:\n  - '@scope/young@2.0.0'\nworkspaceConcurrency: 1\n")
+})
+
 test('maintenance removes the exception list and its comment once every entry matured', async () => {
   const source = "saveExact: true\n# Exact security releases; remove these exceptions once they are 14 days old.\nminimumReleaseAgeExclude:\n  - 'old@1.0.0'\ntrustLockfile: false\n"
   const result = await dropMaturedExemptions(source, { now, publishedAt: published({ '1.0.0': days(30) }) })

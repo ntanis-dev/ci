@@ -5,6 +5,67 @@ Internal CI workflows and actions for repositories owned and operated by
 
 This repository is not an integration surface for third-party projects. Its contents may change without notice, and external use is unsupported.
 
+## Dependency scan and maintenance
+
+`dependency-scan.yml` scans a repository with OSV-Scanner and fails only when someone has to act. Every finding is
+classified by the `dependency-gate` action:
+
+- **accepted**: listed in [`accepted-advisories.json`](accepted-advisories.json) with a reason and an expiry date. The
+  gate reads that file from `main`, so a decision applies everywhere without re-pinning. Expired entries fail again.
+- **waiting**: the fixed release is younger than the two-week release age; the scan reports the date it lands and
+  passes.
+- **action**: a fixed release has passed the release age but is not applied.
+- **decision**: there is no fixed release, or an acceptance expired.
+
+Only action and decision fail (at or above `fail-severity`; unknown severities and release dates fail closed).
+`project-validate.yml` and `project-candidate.yml` run the same gate at `high` in place of `pnpm audit`. Decisions
+that concern one repository only stay in that repository's `osv-scanner.toml`, which OSV-Scanner applies first.
+
+`dependency-maintenance.yml` runs weekly in each pnpm repository, before its scan. It drops `minimumReleaseAgeExclude`
+entries whose versions are two weeks old, updates only the packages whose mature fix is missing (through `pnpm
+update`, so pnpm's own `minimumReleaseAge` decides what enters the lockfile), verifies the frozen install, the
+supply-chain policy and the optional check and build scripts, regenerates third-party notices and pushes to `main`.
+It never adds an exception or an override, and it refuses to run without `minimumReleaseAge: 20160`. Commits pushed
+with the workflow token start no other workflow, so the change is built and deployed by the next push.
+
+```yaml
+# .github/workflows/osv-scanner.yml
+name: Dependency Vulnerability Scan
+on:
+  push:
+    branches: [main]
+    paths: ["**/pnpm-lock.yaml", "**/osv-scanner.toml", ".github/workflows/osv-scanner.yml"]
+  schedule:
+    - cron: '29 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    uses: ntanis-dev/ci/.github/workflows/dependency-scan.yml@<exact-commit>
+```
+
+```yaml
+# .github/workflows/dependency-maintenance.yml
+name: Dependency maintenance
+on:
+  schedule:
+    - cron: '47 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  maintain:
+    uses: ntanis-dev/ci/.github/workflows/dependency-maintenance.yml@<exact-commit>
+    with:
+      build-script: build
+```
+
+Both take `exclude`, newline-separated paths whose lockfiles ship nowhere (experiments, research snapshots).
+`node scripts/dependency-summary.mjs` reads every repository's latest results with your own `gh` login and prints one
+summary: what needs you, what maintenance fixed this week, what is waiting and until when, and which acceptances
+expire soon.
+
 ## Release candidates
 
 `project-candidate.yml` builds the repository-declared platform matrix without using GitHub Actions artifact storage. Each isolated platform runner stages only its declared top-level release files, registers that target through the repository-bound GitHub OIDC identity, and uploads bounded checksummed chunks directly to Hub. The final job sends no binaries; it only asks Hub to atomically mark the candidate ready after every configured target and byte has been verified. Hub removes incomplete upload sessions after 24 hours.

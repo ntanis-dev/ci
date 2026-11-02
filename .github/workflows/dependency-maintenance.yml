@@ -1,0 +1,108 @@
+name: Dependency maintenance
+
+# Each pnpm repository calls this weekly, before its dependency scan. It drops release-age exceptions that have
+# matured and updates the packages whose mature fix is missing, all through pnpm's own two-week minimumReleaseAge,
+# then verifies the frozen install, the supply-chain policy and the repository's checks before pushing to main.
+# It never adds an exception or an override. Commits pushed with the workflow token do not start other workflows, so
+# the change is built and deployed by the repository's next push.
+
+on:
+  workflow_call:
+    inputs:
+      check-script:
+        description: Optional package script used for static verification
+        required: false
+        default: ''
+        type: string
+      build-script:
+        description: Optional package script used for the ordinary build
+        required: false
+        default: ''
+        type: string
+      exclude:
+        description: Newline-separated repository paths whose lockfiles are not part of anything that ships
+        required: false
+        default: ''
+        type: string
+      timeout-minutes:
+        description: Job timeout; maintenance usually takes under 5 minutes
+        required: false
+        default: 30
+        type: number
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependency-maintenance-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Require the two-week pnpm release age
+        id: policy
+        run: |
+          set -euo pipefail
+          if [ ! -f pnpm-workspace.yaml ]; then
+            echo 'pnpm=false' >> "$GITHUB_OUTPUT"
+            echo 'No pnpm workspace: the weekly dependency scan covers this repository.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for setting in 'minimumReleaseAge: 20160' 'minimumReleaseAgeStrict: true'; do
+            if ! grep -qxF "$setting" pnpm-workspace.yaml; then
+              echo "::error::pnpm-workspace.yaml must contain '$setting' before maintenance may update dependencies"
+              exit 1
+            fi
+          done
+          echo 'pnpm=true' >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        if: steps.policy.outputs.pnpm == 'true'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.policy.outputs.pnpm == 'true'
+        with:
+          node-version: 24
+      - name: Scan before maintenance
+        if: steps.policy.outputs.pnpm == 'true'
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@9133407de6b930a02602829742d12c2c23d9ee02
+        with:
+          fail-severity: none
+          exclude: ${{ inputs.exclude }}
+          result-file: ${{ runner.temp }}/before.json
+      - name: Apply mature fixes and drop matured exceptions
+        if: steps.policy.outputs.pnpm == 'true'
+        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@9133407de6b930a02602829742d12c2c23d9ee02
+        with:
+          mode: apply
+          before-result: ${{ runner.temp }}/before.json
+          report-file: ${{ runner.temp }}/maintenance.json
+          check-script: ${{ inputs.check-script }}
+          build-script: ${{ inputs.build-script }}
+      - name: Scan after maintenance
+        if: steps.policy.outputs.pnpm == 'true'
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@9133407de6b930a02602829742d12c2c23d9ee02
+        with:
+          fail-severity: none
+          exclude: ${{ inputs.exclude }}
+          result-file: ${{ runner.temp }}/after.json
+      - name: Commit and push to main
+        if: steps.policy.outputs.pnpm == 'true'
+        uses: ntanis-dev/ci/.github/actions/dependency-maintenance@9133407de6b930a02602829742d12c2c23d9ee02
+        with:
+          mode: commit
+          after-result: ${{ runner.temp }}/after.json
+          report-file: ${{ runner.temp }}/maintenance.json
+      - name: Keep the result for the weekly summary
+        if: always() && steps.policy.outputs.pnpm == 'true'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: dependency-maintenance
+          path: |
+            ${{ runner.temp }}/maintenance.json
+            ${{ runner.temp }}/after.json
+          retention-days: 14
+          if-no-files-found: ignore

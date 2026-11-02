@@ -1,0 +1,47 @@
+name: Dependency scan
+
+# Each repository's osv-scanner.yml calls this on lockfile changes and weekly. It fails only when someone has to act:
+# a mature fix that is not applied, or an advisory without a fix or a current acceptance. Fixes younger than the
+# two-week release age are reported with the date they land, and accepted-advisories.json decisions pass.
+
+on:
+  workflow_call:
+    inputs:
+      exclude:
+        description: Newline-separated repository paths whose lockfiles are not part of anything that ships
+        required: false
+        default: ''
+        type: string
+      timeout-minutes:
+        description: Job timeout; a scan usually takes under 2 minutes
+        required: false
+        default: 10
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Gate dependency advisories
+        uses: ntanis-dev/ci/.github/actions/dependency-gate@9133407de6b930a02602829742d12c2c23d9ee02
+        with:
+          exclude: ${{ inputs.exclude }}
+          result-file: ${{ runner.temp }}/dependency-scan.json
+      - name: Keep the classification for the weekly summary
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: dependency-scan
+          path: ${{ runner.temp }}/dependency-scan.json
+          retention-days: 14
+          if-no-files-found: ignore

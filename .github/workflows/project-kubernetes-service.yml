@@ -53,7 +53,7 @@ jobs:
           git lfs ls-files --json | jq -e 'all((.files // [])[]; .checkout == true and .downloaded == true)'
 
       - name: Enforce central supply-chain policy
-        uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@76302f7914a613c2a3e4ad2cc9073f70ba7b3dcb
+        uses: ntanis-dev/ci/.github/actions/pnpm-supply-chain@7fc1773f17af82ae87d0379bc5b9cc6e5d94dc1e
 
       - id: contract
         name: Validate the bounded Kubernetes contract

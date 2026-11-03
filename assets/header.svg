@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">Ntanis CI</title>
+  <desc id="desc">Shared CI for ntanis.dev projects. Internal, pinned by commit, trusted only from main. A run in which validate, the dependency gate, the candidate and the deploy pass, and the Monday maintenance moves fast-uri from 3.1.8 to 3.1.9.</desc>
+  <rect x="0.5" y="0.5" width="1199" height="359" rx="16" fill="#121519" stroke="#343a43"/>
+  <rect x="40" y="0.5" width="1120" height="3" rx="1.5" fill="#9fc2a6" opacity="0.85"/>
+  <g transform="translate(176 144) scale(1.25)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 0 H56" stroke="#92ae99" stroke-width="4"/>
+    <circle cx="0" cy="0" r="9" fill="#92ae99"/>
+    <circle cx="34" cy="0" r="9" fill="#92ae99"/>
+    <circle cx="68" cy="0" r="12" stroke="#9fc2a6" stroke-width="4"/>
+    <path d="M62 0.5 L66 4.5 L74 -4.5" stroke="#9fc2a6" stroke-width="4"/>
+  </g>
+  <g transform="translate(309 96) scale(1.5)" fill="none" stroke="#9fc2a6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(0 0)"><path d="M40 15 Q34 6 23 6 Q5 6 5 32 Q5 58 23 58 Q34 58 40 49"/></g><g transform="translate(62 0)"><path d="M10 6 H34 M22 6 V58 M10 58 H34"/></g>
+  </g>
+  <text x="310" y="226" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="700" fill="#92ae99">Shared CI for ntanis.dev projects.</text>
+  <text x="310" y="252" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="15" fill="#7e858e">Internal. Pinned by commit. Trusted only from main.</text>
+  <rect x="612" y="34" width="524" height="292" rx="12" fill="#181b20" stroke="#343a43"/>
+  <circle cx="636" cy="56" r="5.5" fill="#cf8b82"/><circle cx="656" cy="56" r="5.5" fill="#d7ac78"/><circle cx="676" cy="56" r="5.5" fill="#92ae99"/>
+  <text x="874" y="61" text-anchor="middle" font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#7e858e">ntanis-dev/ci · main</text>
+  <line x1="612" y1="78" x2="1136" y2="78" stroke="#343a43"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" fill="#7e858e">
+    <text x="640" y="110">Job</text><text x="830" y="110">Result</text><text x="1108" y="110" text-anchor="end">Time</text>
+  </g>
+  <g fill="#92ae99" fill-opacity="0.18" stroke="#92ae99" stroke-width="1.5">
+    <circle cx="648" cy="135" r="8"/><circle cx="648" cy="165" r="8"/><circle cx="648" cy="195" r="8"/><circle cx="648" cy="225" r="8"/>
+  </g>
+  <g fill="none" stroke="#92ae99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M644.5 135 L647 137.5 L651.5 132.5"/><path d="M644.5 165 L647 167.5 L651.5 162.5"/><path d="M644.5 195 L647 197.5 L651.5 192.5"/><path d="M644.5 225 L647 227.5 L651.5 222.5"/>
+  </g>
+  <g font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" fill="#d6d8dc">
+    <text x="666" y="140">validate</text><text x="666" y="170">dependency gate</text><text x="666" y="200">candidate</text><text x="666" y="230">deploy</text>
+  </g>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" fill="#7e858e">
+    <text x="830" y="140">install, check, build</text><text x="830" y="170">0 to act on, 3 waiting</text><text x="830" y="200">6 targets sent to Hub</text><text x="830" y="230">api rolled out</text>
+  </g>
+  <g font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14" fill="#7e858e" text-anchor="end">
+    <text x="1108" y="140">1m 48s</text><text x="1108" y="170">21s</text><text x="1108" y="200">6m 12s</text><text x="1108" y="230">3m 54s</text>
+  </g>
+  <style>
+    .glide { transform: translateX(19px); }
+    @media (prefers-reduced-motion: no-preference) {
+      .glide { animation: v1 3.2s ease-in-out infinite; }
+      @keyframes v1 { 0% { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 70% { transform: translateX(38px); opacity: 1; } 90% { transform: translateX(38px); opacity: 0; } 100% { transform: translateX(38px); opacity: 0; } }
+    }
+  </style>
+  <text x="640" y="270" font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="700" fill="#7e858e">EVERY MONDAY</text><line x1="746" y1="266" x2="1108" y2="266" stroke="#343a43"/>
+  <g fill="none" stroke="#9fc2a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M654.5 290 A7 7 0 1 0 655 296"/><path d="M655.5 285 L655 290.3 L649.8 289.6"/>
+  </g>
+  <text x="666" y="298" font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#d6d8dc">maintenance</text>
+  <text x="830" y="298" font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" fill="#7e858e">fast-uri</text>
+  <text x="890" y="298" font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14" fill="#cf8b82">3.1.8</text>
+  <line x1="940" y1="293" x2="984" y2="293" stroke="#343a43" stroke-width="2" stroke-dasharray="3 5"/>
+  <path d="M976 288 L985 293 L976 298" fill="none" stroke="#9fc2a6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="glide"><circle cx="942" cy="293" r="3.5" fill="#9fc2a6"/></g>
+  <text x="996" y="298" font-family="ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14" fill="#92ae99">3.1.9</text>
+  <text x="1108" y="298" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" fill="#92ae99">pushed</text>
+</svg>

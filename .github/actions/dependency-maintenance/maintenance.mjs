@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { RELEASE_AGE_DAYS, registryPublishedAt } from '../dependency-gate/gate.mjs'
 
 const DAY = 864e5
-const ENTRY = /^(\s*-\s*)(['"]?)([^'"\s#]+)\2(?:\s*#\s*security-expires:\s*(\d{4}-\d{2}-\d{2}))?\s*$/
+const ENTRY = /^(\s*-\s*)(['"]?)([^'"\s#]+)\2\s*$/
 const PACKAGE_NAME = /^(?:@[a-z0-9._~-]+\/)?[a-z0-9._~-]+$/i
 
 const splitSelector = (selector) => {
@@ -37,7 +37,6 @@ export async function dropMaturedExemptions(source, { now = new Date(), publishe
       groups.at(-1).entries.push(line)
     }
   }
-  const today = now.toISOString().slice(0, 10)
   const removed = []
   const kept = []
   for (const group of groups) {
@@ -45,12 +44,8 @@ export async function dropMaturedExemptions(source, { now = new Date(), publishe
     for (const line of group.entries) {
       const match = ENTRY.exec(line)
       const selector = match && splitSelector(match[3])
-      let mature = false
-      if (match?.[4]) mature = match[4] <= today
-      else if (selector) {
-        const date = await publishedAt('npm', selector.name, selector.version)
-        mature = Boolean(date) && date.getTime() + RELEASE_AGE_DAYS * DAY <= now.getTime()
-      }
+      const date = selector && await publishedAt('npm', selector.name, selector.version)
+      const mature = Boolean(date) && date.getTime() + RELEASE_AGE_DAYS * DAY <= now.getTime()
       if (mature) removed.push(match[3])
       else entries.push(line)
     }

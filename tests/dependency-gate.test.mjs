@@ -88,13 +88,12 @@ test('maintenance drops matured exceptions with their comments and keeps young o
     "  - 'young@2.0.0'",
     '  # GHSA-zzzz: drop this once it is two weeks old.',
     "  - '@scope/pkg@3.0.0'",
-    "  - 'tagged@1.0.0' # security-expires: 2026-11-01",
     'trustLockfile: false',
     '',
   ].join('\r\n')
   const ages = { '1.0.0': days(30), '2.0.0': days(3), '3.0.0': days(15) }
   const result = await dropMaturedExemptions(source, { now, publishedAt: published(ages) })
-  assert.deepEqual(result.removed, ['old@1.0.0', '@scope/pkg@3.0.0', 'tagged@1.0.0'])
+  assert.deepEqual(result.removed, ['old@1.0.0', '@scope/pkg@3.0.0'])
   assert.equal(result.source, ['minimumReleaseAge: 20160', '# Exact security releases; remove these exceptions once they are 14 days old.', 'minimumReleaseAgeExclude:', "  - 'young@2.0.0'", 'trustLockfile: false', ''].join('\r\n'))
 })
 

@@ -150,7 +150,7 @@ repository-owned verification job. The shared workflow independently validates t
 digest-pinned Dockerfile base images, publishes the commit-tagged image, captures its immutable registry digest, and
 submits only the bounded deployment request with GitHub OIDC. It receives no Hub or Kubernetes credential. Before
 validation and image construction, it materializes every Git LFS object and fails closed if any tracked file remains an
-unresolved pointer. The legacy pnpm-specific Kubernetes workflow enforces the same checkout boundary.
+unresolved pointer. `project-kubernetes-service.yml` enforces the same checkout boundary.
 
 The optional `context` (default `.`) and `dockerfile` (default `Dockerfile`) inputs are repository-relative paths. The
 Dockerfile must be inside the context; resolved paths must stay inside the checkout, and the context must include a
@@ -192,7 +192,7 @@ health checks, leases and rollback.
 When Hub holds a queued deployment because required component-scoped settings are not yet saved and applied, its
 status carries their names as `missing_environment`. The deploy job then ends successfully with a warning annotation
 instead of polling: Hub keeps the running build serving and rolls the queued image out by itself once the settings
-are applied, so no new run is needed. A Hub that does not report the field leaves the job polling as before.
+are applied, so no new run is needed.
 
 ## Job timeouts
 
@@ -214,11 +214,3 @@ The container deploy job has no input: its timeout is computed from the same sta
 seconds per poll, plus ten minutes, never more than six hours), so a slow but healthy cold start is never cut short.
 `tests/workflow-timeouts.test.mjs` fails if a job loses its timeout or the deploy timeout stops covering the poll
 budget.
-
-## Release-age maintenance (replaced)
-
-`release-age-maintenance.yml` is the older cleanup that only removed release-age exceptions marked with an expiry
-date (`# security-expires: 2026-11-02` after a pnpm entry, or a `# security-expires: name=date` line above a uv
-`exclude-newer-package` table). Since 2026-11-02 no repository calls it: `dependency-maintenance.yml` drops matured
-exceptions by their release date and does the rest. Its own Monday schedule only runs in this repository. Its tests
-are `tests/release-age-maintenance.test.mjs`; delete the workflow, its action and its tests together if it goes.
